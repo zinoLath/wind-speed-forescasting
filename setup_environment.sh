@@ -4,7 +4,7 @@
 echo "Criando ambiente virtual Python..."
 
 # Criando o ambiente virtual
-python3 -m venv .venv
+python3.10 -m venv .venv
 
 # Verificando se o ambiente foi criado corretamente
 if [ ! -d ".venv" ] || [ ! -f ".venv/bin/activate" ]; then
