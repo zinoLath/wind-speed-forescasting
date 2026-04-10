@@ -96,4 +96,4 @@ dmypy.json
 # Data folders (uncomment if needed)
 # /data/
 # /datasets/
- /models/
+/models/
