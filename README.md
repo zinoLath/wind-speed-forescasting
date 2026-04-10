@@ -54,6 +54,22 @@ cd Wind-Speed-Forecasting
 source .venv/bin/activate
 ```
 
+### TensorFlow com GPU (Arch Linux)
+
+Se você estiver no Arch Linux com NVIDIA, execute também:
+
+```bash
+source ./scripts/tf_gpu_env.sh
+```
+
+Se seu shell for fish:
+
+```fish
+source ./scripts/tf_gpu_env.fish
+```
+
+Esse passo ajusta o `LD_LIBRARY_PATH` para garantir que o TensorFlow encontre a biblioteca `libcusolver.so.11` no ambiente virtual.
+
 ### Executando o Projeto
 
 1. Para treinar o modelo:
