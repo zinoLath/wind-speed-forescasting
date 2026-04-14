@@ -7,14 +7,12 @@ if [ -z "${VIRTUAL_ENV:-}" ]; then
     return 0 2>/dev/null || exit 0
 fi
 
-CUSOLVER_DIR="$(find "$VIRTUAL_ENV/lib" -path '*/site-packages/nvidia/cusolver/lib' -type d 2>/dev/null | head -n 1)"
+CUDA_VENV_BASE="$VIRTUAL_ENV/lib/python3.10/site-packages/nvidia"
+CUSOLVER_DIR="$CUDA_VENV_BASE/cusolver/lib"
 
-if [ -n "$CUSOLVER_DIR" ] && [ -d "$CUSOLVER_DIR" ]; then
+if [ -d "$CUSOLVER_DIR" ]; then
     if [ -n "${LD_LIBRARY_PATH:-}" ]; then
-        case ":$LD_LIBRARY_PATH:" in
-            *":$CUSOLVER_DIR:"*) ;;
-            *) export LD_LIBRARY_PATH="$CUSOLVER_DIR:$LD_LIBRARY_PATH" ;;
-        esac
+        export LD_LIBRARY_PATH="$CUSOLVER_DIR:$LD_LIBRARY_PATH"
     else
         export LD_LIBRARY_PATH="$CUSOLVER_DIR"
     fi

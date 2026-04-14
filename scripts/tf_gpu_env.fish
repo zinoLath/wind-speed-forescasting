@@ -5,13 +5,11 @@ if test -z "$VIRTUAL_ENV"
     exit 0
 end
 
-set CUSOLVER_DIR (find "$VIRTUAL_ENV/lib" -path '*/site-packages/nvidia/cusolver/lib' -type d 2>/dev/null | head -n 1)
+set CUSOLVER_DIR "$VIRTUAL_ENV/lib/python3.10/site-packages/nvidia/cusolver/lib"
 
-if test -n "$CUSOLVER_DIR"; and test -d "$CUSOLVER_DIR"
+if test -d "$CUSOLVER_DIR"
     if test -n "$LD_LIBRARY_PATH"
-        if not string match -q "*$CUSOLVER_DIR*" -- "$LD_LIBRARY_PATH"
-            set -gx LD_LIBRARY_PATH "$CUSOLVER_DIR:$LD_LIBRARY_PATH"
-        end
+        set -gx LD_LIBRARY_PATH "$CUSOLVER_DIR:$LD_LIBRARY_PATH"
     else
         set -gx LD_LIBRARY_PATH "$CUSOLVER_DIR"
     end
