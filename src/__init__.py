@@ -1,0 +1,1 @@
+"""Source package for wind speed forecasting."""
