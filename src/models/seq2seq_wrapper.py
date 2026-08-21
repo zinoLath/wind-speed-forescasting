@@ -15,7 +15,14 @@ class Seq2SeqWrapper:
         self.name = "Seq2Seq_Base"
 
     @staticmethod
-    def create_sequences(data, input_steps, output_steps, target_col_index):
+    def create_sequences(
+        data,
+        input_steps,
+        output_steps,
+        target_col_index,
+        decoder_mode="teacher_forcing",
+        target_mode="absolute",
+    ):
         """
         Create input and output sequences for the Seq2Seq model using Teacher forcing.
         """
@@ -27,18 +34,33 @@ class Seq2SeqWrapper:
         for i in range(len(data) - input_steps - output_steps + 1):
             X_encoder.append(data[i:(i + input_steps)])
             
-            decoder_input = np.zeros((output_steps, 1))
-            
-            decoder_input[0] = data[i + input_steps - 1, target_col_index]
-            
-            decoder_input[1:] = data[i + input_steps:i + input_steps + output_steps - 1, target_col_index].reshape(-1, 1)
+            if decoder_mode == "teacher_forcing":
+                decoder_input = np.zeros((output_steps, 1))
+                decoder_input[0] = data[i + input_steps - 1, target_col_index]
+                decoder_input[1:] = data[
+                    i + input_steps:i + input_steps + output_steps - 1,
+                    target_col_index,
+                ].reshape(-1, 1)
+            elif decoder_mode == "direct":
+                decoder_input = np.empty((output_steps, 2))
+                decoder_input[:, 0] = data[i + input_steps - 1, target_col_index]
+                decoder_input[:, 1] = np.arange(1, output_steps + 1) / output_steps
+            else:
+                raise ValueError(f"Unknown decoder mode: {decoder_mode}")
             
             X_decoder.append(decoder_input)
-            y_decoder.append(data[i + input_steps:i + input_steps + output_steps, target_col_index].reshape(-1, 1))
+            target = data[
+                i + input_steps:i + input_steps + output_steps, target_col_index
+            ].reshape(-1, 1)
+            if target_mode == "residual":
+                target = target - data[i + input_steps - 1, target_col_index]
+            elif target_mode != "absolute":
+                raise ValueError(f"Unknown target mode: {target_mode}")
+            y_decoder.append(target)
         
         return np.array(X_encoder), np.array(X_decoder), np.array(y_decoder)
 
-    def prepare_data(self, data, input_steps, output_steps, target_col, scaler_target=None, scaler_other=None, create_sequences=True, denoise=["ws100"]):
+    def prepare_data(self, data, input_steps, output_steps, target_col, scaler_target=None, scaler_other=None, create_sequences=True, denoise=["ws100"], decoder_mode=None, target_mode=None):
         data = data.copy()
         values = {}# Aplica o denoising em cada coluna e armazena os resultados
         for col in denoise:
@@ -62,7 +84,14 @@ class Seq2SeqWrapper:
         target_col_index = data.columns.get_loc(target_col)
 
         if create_sequences:
-            X_encoder, X_decoder, y_decoder = self.create_sequences(variables_scaled, input_steps, output_steps, target_col_index)
+            X_encoder, X_decoder, y_decoder = self.create_sequences(
+                variables_scaled,
+                input_steps,
+                output_steps,
+                target_col_index,
+                decoder_mode=decoder_mode or getattr(self, "decoder_mode", "teacher_forcing"),
+                target_mode=target_mode or getattr(self, "target_mode", "absolute"),
+            )
             values['X_encoder'] = X_encoder
             values['X_decoder'] = X_decoder
             values['y_decoder'] = y_decoder
@@ -74,13 +103,15 @@ class Seq2SeqWrapper:
         values['target_col_index'] = target_col_index
         return values, variables_scaled
 
-    def prepare(self, train_data, val_data, input_steps=72, output_steps=36, denoise_level=2, target_col='ws100_wavelet', denoise=["ws100"]):
+    def prepare(self, train_data, val_data, input_steps=72, output_steps=36, denoise_level=2, target_col='ws100_wavelet', denoise=["ws100"], decoder_mode="teacher_forcing", target_mode="absolute"):
         
         self.input_steps = input_steps
         self.output_steps = output_steps
         self.target_col = target_col
         self.denoise = denoise
         self.denoise_level = denoise_level
+        self.decoder_mode = decoder_mode
+        self.target_mode = target_mode
         
         self.train, _ = self.prepare_data(train_data, 
                                        input_steps, 
@@ -98,7 +129,7 @@ class Seq2SeqWrapper:
                                      scaler_other=self.train['scaler_other'],
                                      denoise=denoise)
         self.num_encoder_features = self.train["X_encoder"].shape[2]
-        self.num_decoder_features = 1  
+        self.num_decoder_features = self.train["X_decoder"].shape[2]
         
         return self
     def build(self, hp):
@@ -132,18 +163,18 @@ class Seq2SeqWrapper:
                                        scaler_target=self.scaler_target,
                                        scaler_other=self.scaler_other,
                                        create_sequences=False)
-        scaler_prediction = MinMaxScaler()
-        input_scaled = scaler_prediction.fit_transform(input_data[[self.target_col]])
         encoder_input = input_data.to_numpy(copy=True).reshape(1, self.input_steps, input_data.shape[1])
-        decoder_input = np.zeros((1, self.output_steps, 1))
-            
-        decoder_input[0, 0, 0] = encoder_input[0, -1, self.target_col_index]
-            
-        for t in range(1, self.output_steps):
-            previous_pred = decoder_input[0, t-1, 0]
-            decoder_input[0, t, 0] = previous_pred
+        if self.decoder_mode == "direct":
+            decoder_input = np.empty((1, self.output_steps, 2))
+            decoder_input[0, :, 0] = encoder_input[0, -1, self.target_col_index]
+            decoder_input[0, :, 1] = np.arange(1, self.output_steps + 1) / self.output_steps
+        else:
+            decoder_input = np.zeros((1, self.output_steps, 1))
+            decoder_input[0, :, 0] = encoder_input[0, -1, self.target_col_index]
         
         prediction = self.model.predict([encoder_input, decoder_input], verbose=0)
+        if self.target_mode == "residual":
+            prediction = prediction + encoder_input[0, -1, self.target_col_index]
         prediction = self.scaler_target.inverse_transform(prediction.reshape(-1, 1)).flatten()
         return prediction
     def rolling_forecast(self, data, test_start=None):
@@ -208,15 +239,17 @@ class Seq2SeqWrapper:
             encoder_input = window.reshape(1, self.input_steps, data_scaled.shape[1])
             
             
-            decoder_input = np.zeros((1, self.output_steps, 1))
-            
-            decoder_input[0, 0, 0] = encoder_input[0, -1, self.target_col_index]
-            
-            for t in range(1, self.output_steps):
-                previous_pred = decoder_input[0, t-1, 0]
-                decoder_input[0, t, 0] = previous_pred
+            if self.decoder_mode == "direct":
+                decoder_input = np.empty((1, self.output_steps, 2))
+                decoder_input[0, :, 0] = encoder_input[0, -1, self.target_col_index]
+                decoder_input[0, :, 1] = np.arange(1, self.output_steps + 1) / self.output_steps
+            else:
+                decoder_input = np.zeros((1, self.output_steps, 1))
+                decoder_input[0, :, 0] = encoder_input[0, -1, self.target_col_index]
             
             pred = self.model.predict([encoder_input, decoder_input], verbose=0)
+            if self.target_mode == "residual":
+                pred = pred + encoder_input[0, -1, self.target_col_index]
             
             last_pred = pred[0, -1, 0]
             predictions.append(last_pred)
@@ -224,7 +257,7 @@ class Seq2SeqWrapper:
             last_actual = test_data[i + self.output_steps - 1, self.target_col_index]
             actuals.append(last_actual)
             
-            window = np.vstack([window, test_data[i + self.output_steps - 1]])
+            window = np.vstack([window, test_data[i]])
             window = window[1:] 
         
         predictions = np.array(predictions).reshape(-1, 1)
@@ -234,4 +267,3 @@ class Seq2SeqWrapper:
         actuals_inverse = self.scaler_target.inverse_transform(actuals)
         
         return predictions_inverse, actuals_inverse
-        

@@ -94,7 +94,9 @@ dmypy.json
 *.pth
 
 # Data folders (uncomment if needed)
-# /data/
+/data/
 # /datasets/
 /models/
 /OLD/
+/images/
+/scripts/

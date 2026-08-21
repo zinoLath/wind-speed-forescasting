@@ -151,17 +151,16 @@ wrappers = [
 ]
 
 def calculate_features(df, col_list):
-    heights = [i for i in range(40, 51, 10)]
+    heights = [i for i in range(40, 50, 10)]
+    df["cis50"] = (df["ws40"] - df["ws50"])/10
     for h in heights:
-        if h > 40:
-            df["cis" + str(h)] = (df["ws" + str(h)] - df["ws" + str(h-10)])/10
         for i in range(0, len(df)):
             moving_average_ws = df["ws" + str(h)].iloc[max(0, i-36):min(max(0, i-36)+36, len(df))].mean()
-            moving_average_v = df["v" + str(h)].iloc[max(0, i-36):min(max(0, i-36)+36, len(df))].mean()
+            moving_average_v = df["w" + str(h)].iloc[max(0, i-36):min(max(0, i-36)+36, len(df))].mean()
             moving_average_dir = df["dir" + str(h)].iloc[max(0, i-36):min(max(0, i-36)+36, len(df))].mean()
 
             df.at[df.index[i], "wsdisp" + str(h)] = df["ws" + str(h)].iloc[i] - moving_average_ws
-            df.at[df.index[i], "vdisp" + str(h)] = df["v" + str(h)].iloc[i] - moving_average_v
+            df.at[df.index[i], "vdisp" + str(h)] = df["w" + str(h)].iloc[i] - moving_average_v
             df.at[df.index[i], "dirdisp" + str(h)] = df["dir" + str(h)].iloc[i] - moving_average_dir
     df_trim = df.copy()
 
@@ -305,12 +304,13 @@ def execute_test(wrapper):
         240,
         260,
     ]
-    cols_to_rename = {}
+    cols_to_rename = {"timestamp": "DT"}
     for h in heights:
         cols_to_rename[f"wdir{h}"] = f"dir{h}"
-        cols_to_rename[f"verts{h}"] = f"v{h}"
+        cols_to_rename[f"verts{h}"] = f"w{h}"
 
     dataset = dataset.rename(columns=cols_to_rename)
+    print(f"Dataset shape: {dataset.shape}")
     col_list = ["ws100", "wsdisp40", "vdisp40", "dirdisp40", "dir40", "cis50"]
     dataset = calculate_features(dataset,col_list)
     
@@ -389,8 +389,8 @@ def execute_test(wrapper):
             + str(period_metadata["period"])
             + ".csv"
         )
-        df_period["timestamp"] = pd.to_datetime(df_period["timestamp"], format="mixed")
-        df_period = df_period.sort_values("timestamp").set_index("timestamp")
+        df_period["DT"] = pd.to_datetime(df_period["DT"], format="mixed")
+        df_period = df_period.sort_values("DT").set_index("DT")
         df_period = calculate_features(df_period,col_list)
         print(
             f"Evaluating on period {period_metadata['period']} with {len(df_period)} records..."

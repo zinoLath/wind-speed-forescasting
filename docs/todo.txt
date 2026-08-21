@@ -1,0 +1,2 @@
+- run optuna on every training session to map out better HyperParameters
+- organize repo to better use the 

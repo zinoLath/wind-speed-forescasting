@@ -136,13 +136,13 @@ if str(project_root) not in sys.path:
 
 from src.models.s2s_lstm_bi_wrapper import S2SLSTMBidirectionalWrapper
 
-# from src.models.s2s_lstm_wrapper import S2SLSTMWrapper
+from src.models.s2s_lstm_wrapper import S2SLSTMWrapper
 from src.models.s2s_tcn_wrapper import S2STCNWrapper
 from src.models.s2s_tcn_bi_wrapper import S2STCNBidirectionalWrapper
 from src.utils import wavelet_denoising
 
 wrappers = [
-    # S2SLSTMWrapper(),
+    S2SLSTMWrapper(),
     S2SLSTMBidirectionalWrapper(),
     S2STCNWrapper(),
     S2STCNBidirectionalWrapper(),
@@ -172,7 +172,7 @@ def execute_test(wrapper):
 
     K.clear_session()  # Limpa o estado do Keras para evitar acúmulo de memória entre execuções
     #K.backend.clear_session()  # Limpa o estado do backend para liberar recursos
-    results_dir = project_root / "data" / "results" / wrapper.name
+    results_dir = project_root / "data" / "results-xyz" / wrapper.name
     results_dir.mkdir(parents=True, exist_ok=True)
 
     print(f"Carregando e preparando os dados para {wrapper.name}...")
@@ -387,8 +387,8 @@ def execute_test(wrapper):
             + str(period_metadata["period"])
             + ".csv"
         )
-        df_period["timestamp"] = pd.to_datetime(df_period["timestamp"], format="mixed")
-        df_period = df_period.sort_values("timestamp").set_index("timestamp")
+        df_period["DT"] = pd.to_datetime(df_period["DT"], format="mixed")
+        df_period = df_period.sort_values("DT").set_index("DT")
         df_period = calculate_features(df_period,col_list)
         print(
             f"Evaluating on period {period_metadata['period']} with {len(df_period)} records..."
