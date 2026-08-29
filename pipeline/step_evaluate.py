@@ -127,6 +127,8 @@ def run(config):
 
     K.clear_session()
     wrapper = wrapper_class()
+    # Only the scalers and metadata are needed to load the saved weights and
+    # run inference; building the (large) train/val sequences would be waste.
     wrapper.prepare(
         train_df,
         val_df,
@@ -135,6 +137,7 @@ def run(config):
         target_col=metadata["target_col"],
         denoise=metadata["denoise"],
         denoise_level=metadata["denoise_level"],
+        create_sequences=False,
     )
     wrapper.build(common.FixedHyperParameters(metadata["hyperparameters"]))
     wrapper.model.load_weights(model_path)
