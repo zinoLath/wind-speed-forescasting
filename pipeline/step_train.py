@@ -62,6 +62,7 @@ def run(config):
     if hasattr(wrapper, "schedule_total_steps"):
         steps_per_epoch = int((len(train_df) + cfg["batch_size"] - 1) // cfg["batch_size"])
         wrapper.schedule_total_steps = steps_per_epoch * cfg["epochs"]
+    wrapper.loss = cfg.get("loss", "mse")
 
     wrapper.build(common.FixedHyperParameters(hyperparameters))
     callbacks = [
@@ -100,6 +101,7 @@ def run(config):
         "denoise_level": cfg["denoise_level"],
         "decoder_mode": getattr(wrapper, "decoder_mode", "teacher_forcing"),
         "target_mode": getattr(wrapper, "target_mode", "absolute"),
+        "loss": wrapper.loss,
         "training": {
             "epochs_requested": cfg["epochs"],
             "epochs_run": len(losses),

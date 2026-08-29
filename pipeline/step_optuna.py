@@ -43,6 +43,7 @@ def _run_search(wrapper_key, train_df, val_df, cfg, out_dir):
     if hasattr(wrapper, "schedule_total_steps"):
         steps_per_epoch = int(np.ceil(len(train_df) / cfg["batch_size"]))
         wrapper.schedule_total_steps = steps_per_epoch * cfg["epochs"]
+    wrapper.loss = cfg.get("loss", "mse")
 
     def objective(trial):
         K.clear_session()
@@ -74,13 +75,41 @@ def _run_search(wrapper_key, train_df, val_df, cfg, out_dir):
             raise RuntimeError("Training returned no val_loss.")
 
         best_val_loss = float(np.min(val_losses))
+
+        # Optuna selects on validation RMSE measured under the inference
+        # decoder convention (prepare() already rewrites the val decoder
+        # inputs), because teacher-forced val_loss is a weak proxy for
+        # forecast error (see docs/relatorio_transformer_improvements.md).
+        # RMSE (not MAE) is the selection metric so trials with large errors
+        # are punished harder.
+        val = wrapper.val
+        predicted_scaled = wrapper.model.predict(
+            [val["X_encoder"], val["X_decoder"]], batch_size=256, verbose=0
+        )[:, :, 0]
+        actual_scaled = val["y_decoder"][:, :, 0]
+        if wrapper.target_mode == "residual":
+            persistence = val["X_encoder"][:, -1, wrapper.target_col_index]
+            predicted_scaled = predicted_scaled + persistence
+            actual_scaled = actual_scaled + persistence
+        predictions = wrapper.scaler_target.inverse_transform(
+            predicted_scaled.reshape(-1, 1)
+        ).ravel()
+        actuals = wrapper.scaler_target.inverse_transform(
+            actual_scaled.reshape(-1, 1)
+        ).ravel()
+        val_rmse = float(np.sqrt(np.mean((actuals - predictions) ** 2)))
+        val_mae = float(np.mean(np.abs(actuals - predictions)))
+
         trial.set_user_attr("train_epochs", len(history.history.get("loss", [])))
         trial.set_user_attr("elapsed_sec", elapsed)
+        trial.set_user_attr("val_loss", best_val_loss)
+        trial.set_user_attr("val_mae", val_mae)
         print(
-            f"[{wrapper_key}] trial {trial.number} best_val={best_val_loss:.6f} "
+            f"[{wrapper_key}] trial {trial.number} val_rmse={val_rmse:.6f} "
+            f"val_mae={val_mae:.6f} val_loss={best_val_loss:.6f} "
             f"epochs={trial.user_attrs['train_epochs']} elapsed={elapsed:.1f}s"
         )
-        return best_val_loss
+        return val_rmse
 
     sampler = optuna.samplers.TPESampler(
         seed=cfg["seed"],
@@ -111,6 +140,7 @@ def _run_search(wrapper_key, train_df, val_df, cfg, out_dir):
         out_dir / "best_trial.json",
         {
             "wrapper": wrapper_key,
+            "objective": "val_rmse",
             "best_value": study.best_value,
             "best_params": study.best_params,
             "n_trials": len(study.trials),
@@ -119,7 +149,7 @@ def _run_search(wrapper_key, train_df, val_df, cfg, out_dir):
             "timeout_sec": cfg.get("timeout_sec"),
         },
     )
-    print(f"[{wrapper_key}] best val_loss={study.best_value:.6f}")
+    print(f"[{wrapper_key}] best val_rmse={study.best_value:.6f}")
     return {
         "best_trial_json": str(out_dir / "best_trial.json"),
         "trials_csv": str(out_dir / "trials.csv"),

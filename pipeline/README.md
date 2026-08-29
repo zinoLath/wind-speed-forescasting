@@ -89,7 +89,9 @@ python pipeline/step_walkforward.py --config pipeline/pipeline.json
 Para cada wrapper configurado em `optuna.wrappers`, roda `n_trials` trials e
 salva o melhor resultado em `pipeline/tmp/optuna/<WrapperName>/`:
 
-- `best_trial.json` — hiperparâmetros vencedores
+- `best_trial.json` — hiperparâmetros vencedores (objetivo: **val RMSE**
+  medido com o decoder de inferência, punindo trial com erros grandes)
+- `optuna.db` — storage sqlite do estudo (permite retomar buscas)
 - `trials.csv` — tabela com todos os trials
 
 ### 2. `train` — treinamento do melhor modelo
@@ -101,12 +103,15 @@ Treina o wrapper `train.wrapper` com os hiperparâmetros de
 - `explicit`: usa `train.hyperparameters`
 - `default`: usa hiperparâmetros embutidos (fallback)
 
+A função de perda é `train.loss` (padrão `mse`, que pune erros grandes;
+alternativas: `mae`, `huber`) e fica registrada no `model.json`.
+
 Salva em `models/best_model/`:
 
 - `model.keras` — o modelo treinado
 - `model.json` — contexto completo do modelo (classe, hiperparâmetros,
-  timestamp de treinamento, épocas rodadas/solicitadas, tempo de treino,
-  loss/val_loss finais, split do dataset)
+  loss, timestamp de treinamento, épocas rodadas/solicitadas, tempo de
+  treino, loss/val_loss finais, split do dataset)
 
 Ambos também são copiados para `pipeline/tmp/` para os estágios seguintes.
 
@@ -119,7 +124,7 @@ no config (opção de *overload*).
 Gera, em `pipeline/tmp/evaluate/<WrapperName>/`:
 
 - `predictions_all_horizons.csv` — previsão de todos os horizontes (origin,
-  timestamp, horizon, actual, predicted, persistence)
+  timestamp, horizon, actual, actual_raw, predicted, persistence)
 - `predictions_rolling.csv` — forecast rolante no horizonte do modelo
 - `per_horizon_metrics.csv` — MAE/RMSE/R² por horizonte
 - `metrics.json` — todas as métricas agregadas (inclui baseline de persistência)
@@ -128,6 +133,12 @@ Gera, em `pipeline/tmp/evaluate/<WrapperName>/`:
 
 Todos os dados dos gráficos ficam disponíveis em CSV/JSON, permitindo
 regenerar ou reagregar gráficos sem reexecutar o código.
+
+**Convenções de métricas:** as métricas principais comparam as previsões
+contra o **ws100 cru** (sem suavização wavelet), evitando que o smoothing
+mascare o erro; as métricas contra a série denoised ficam como colunas
+secundárias (`*_denoised`). O forecast rolante usa apenas janelas de
+histórico conhecido (`[i-input_steps, i)`), sem valores futuros.
 
 ### 4. `impute` — imputação de dados
 

@@ -86,6 +86,7 @@ def _train_and_predict(wrapper, train_df, eval_df, cfg, hyperparameters):
     if hasattr(wrapper, "schedule_total_steps"):
         steps_per_epoch = int((len(train_part) + cfg["batch_size"] - 1) // cfg["batch_size"])
         wrapper.schedule_total_steps = steps_per_epoch * cfg["epochs"]
+    wrapper.loss = cfg.get("loss", "mse")
 
     wrapper.build(common.FixedHyperParameters(hyperparameters))
     history = wrapper.fit(
@@ -107,10 +108,24 @@ def _train_and_predict(wrapper, train_df, eval_df, cfg, hyperparameters):
     eval_window = pd.concat([train_df.iloc[-cfg["input_steps"]:], eval_df])
     predictions = common.predict_all_horizons(wrapper, eval_window)
 
-    metrics = common.compute_metrics(predictions["actual"], predictions["predicted"])
+    # Headline metrics compare against the RAW wind speed (the denoised
+    # series is kept as a secondary reference).
+    raw_col = cfg["target_col"].removesuffix("_wavelet")
+    if raw_col in eval_window.columns:
+        predictions["actual_raw"] = eval_window[raw_col].reindex(
+            predictions["timestamp"]
+        ).to_numpy()
+        actual_col = "actual_raw"
+    else:
+        actual_col = "actual"
+
+    metrics = common.compute_metrics(predictions[actual_col], predictions["predicted"])
     metrics["persistence_mae"] = common.compute_metrics(
-        predictions["actual"], predictions["persistence"]
+        predictions[actual_col], predictions["persistence"]
     )["mae"]
+    denoised = common.compute_metrics(predictions["actual"], predictions["predicted"])
+    metrics["mae_denoised"] = denoised["mae"]
+    metrics["rmse_denoised"] = denoised["rmse"]
     metrics["train_epochs"] = len(history.history.get("loss", []))
     return predictions, metrics
 
@@ -196,11 +211,14 @@ def _evaluate_wrapper(wrapper_key, df, cfg, config, out_dir):
 
     all_df = pd.concat(all_predictions, ignore_index=True)
     all_df.to_csv(model_dir / "predictions_all.csv", index=False)
-    overall = common.compute_metrics(all_df["actual"], all_df["predicted"])
+    actual_col = "actual_raw" if "actual_raw" in all_df.columns else "actual"
+    overall = common.compute_metrics(all_df[actual_col], all_df["predicted"])
     overall["persistence_mae"] = common.compute_metrics(
-        all_df["actual"], all_df["persistence"]
+        all_df[actual_col], all_df["persistence"]
     )["mae"]
-    overall["by_horizon"] = common.horizon_metrics(all_df).to_dict(orient="records")
+    overall["by_horizon"] = common.horizon_metrics(
+        all_df.assign(actual=all_df[actual_col])
+    ).to_dict(orient="records")
 
     summary = {
         "settings": {

@@ -34,11 +34,14 @@ STAGE = "evaluate"
 
 
 def _plot_evaluation(roll_df, all_df, per_horizon, output_dir):
-    """Generate the evaluation plots."""
+    """Generate the evaluation plots (using raw actuals when available)."""
     output_dir.mkdir(parents=True, exist_ok=True)
 
+    actual_col = "actual_raw" if "actual_raw" in all_df.columns else "actual"
+    roll_actual_col = "actual_raw" if "actual_raw" in roll_df.columns else "actual"
+
     fig, ax = plt.subplots(figsize=(16, 5))
-    ax.plot(roll_df["timestamp"], roll_df["actual"], label="actual", alpha=0.8)
+    ax.plot(roll_df["timestamp"], roll_df[roll_actual_col], label="actual", alpha=0.8)
     ax.plot(roll_df["timestamp"], roll_df["predicted"], label="predicted", alpha=0.8)
     ax.set_title("Rolling forecast vs actual (forecast horizon)")
     ax.set_xlabel("Timestamp")
@@ -62,7 +65,7 @@ def _plot_evaluation(roll_df, all_df, per_horizon, output_dir):
     fig.savefig(output_dir / "per_horizon_metrics.png", dpi=150)
     plt.close(fig)
 
-    errors = all_df["predicted"] - all_df["actual"]
+    errors = all_df["predicted"] - all_df[actual_col]
     fig, ax = plt.subplots(figsize=(10, 5))
     ax.hist(errors, bins=60, edgecolor="black")
     ax.axvline(0, color="red", linestyle="--")
@@ -74,8 +77,8 @@ def _plot_evaluation(roll_df, all_df, per_horizon, output_dir):
     plt.close(fig)
 
     fig, ax = plt.subplots(figsize=(8, 8))
-    ax.scatter(all_df["actual"], all_df["predicted"], s=2, alpha=0.4)
-    lims = [min(all_df[["actual", "predicted"]].min()), max(all_df[["actual", "predicted"]].max())]
+    ax.scatter(all_df[actual_col], all_df["predicted"], s=2, alpha=0.4)
+    lims = [min(all_df[[actual_col, "predicted"]].min()), max(all_df[[actual_col, "predicted"]].max())]
     ax.plot(lims, lims, color="red", linestyle="--", label="perfect fit")
     ax.set_title("Predicted vs actual (all horizons)")
     ax.set_xlabel("Actual (m/s)")
@@ -159,12 +162,32 @@ def run(config):
         }
     )
 
-    metrics = {"model": metadata}
-    metrics["all_horizons"] = common.compute_metrics(all_df["actual"], all_df["predicted"])
-    metrics["persistence"] = common.compute_metrics(all_df["actual"], all_df["persistence"])
-    metrics["rolling"] = common.compute_metrics(roll_df["actual"], roll_df["predicted"])
+    # Headline metrics compare predictions against the RAW wind speed; the
+    # wavelet-denoised series (what the model was trained on) is kept as a
+    # secondary reference so the smoothing effect stays measurable.
+    raw_col = metadata["target_col"].removesuffix("_wavelet")
+    has_raw = raw_col in dataset.columns
+    if has_raw:
+        all_df["actual_raw"] = dataset[raw_col].reindex(all_df["timestamp"]).to_numpy()
+        roll_df["actual_raw"] = dataset[raw_col].reindex(roll_df["timestamp"]).to_numpy()
 
-    per_horizon_df = common.horizon_metrics(all_df)
+    def _metrics(predicted, actual, actual_secondary=None):
+        result = common.compute_metrics(actual, predicted)
+        if actual_secondary is not None:
+            secondary = common.compute_metrics(actual_secondary, predicted)
+            result["mae_denoised"] = secondary["mae"]
+            result["rmse_denoised"] = secondary["rmse"]
+            result["r2_denoised"] = secondary["r2"]
+        return result
+
+    metrics = {"model": metadata, "actuals": "raw ws100" if has_raw else "denoised target"}
+    metrics["all_horizons"] = _metrics(all_df["predicted"], all_df.get("actual_raw", all_df["actual"]), all_df["actual"])
+    metrics["persistence"] = _metrics(all_df["persistence"], all_df.get("actual_raw", all_df["actual"]), all_df["actual"])
+    metrics["rolling"] = _metrics(roll_df["predicted"], roll_df.get("actual_raw", roll_df["actual"]), roll_df["actual"])
+
+    # Per-horizon table follows the same headline convention (raw actuals).
+    horizon_source = all_df.assign(actual=all_df["actual_raw"]) if has_raw else all_df
+    per_horizon_df = common.horizon_metrics(horizon_source)
     metrics["by_horizon"] = per_horizon_df.to_dict(orient="records")
 
     out_dir = common.resolve(cfg["output_dir"] or tmp_dir / "evaluate" / wrapper.name)

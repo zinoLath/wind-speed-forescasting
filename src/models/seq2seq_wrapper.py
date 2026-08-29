@@ -8,6 +8,10 @@ class Seq2SeqWrapper:
 
     def __init__(self):
         self.name = "Seq2Seq_Base"
+        # Training loss defaults to MSE so large forecast errors are punished
+        # harder than with MAE. Override on the instance (or via the pipeline
+        # ``loss`` config key) to switch to mae/huber.
+        self.loss = "mse"
 
     @staticmethod
     def create_sequences(
@@ -106,7 +110,7 @@ class Seq2SeqWrapper:
         values['target_col_index'] = target_col_index
         return values, variables_scaled
 
-    def prepare(self, train_data, val_data, input_steps=72, output_steps=36, denoise_level=2, target_col='ws100_wavelet', denoise=("ws100",), decoder_mode="teacher_forcing", target_mode="absolute", create_sequences=True):
+    def prepare(self, train_data, val_data, input_steps=72, output_steps=36, denoise_level=2, target_col='ws100_wavelet', denoise=("ws100",), decoder_mode="teacher_forcing", target_mode="absolute", create_sequences=True, validate_with_inference_decoder=True):
 
         self.input_steps = input_steps
         self.output_steps = output_steps
@@ -140,6 +144,14 @@ class Seq2SeqWrapper:
             # Scaler-only preparation (used before loading saved weights).
             self.num_encoder_features = processed_train.shape[1]
             self.num_decoder_features = 2 if decoder_mode == "direct" else 1
+
+        if create_sequences and decoder_mode == "teacher_forcing" and validate_with_inference_decoder:
+            # At deployment the decoder never sees ground-truth future steps;
+            # it repeats the last observed value. Validating (and early
+            # stopping) under the same convention keeps val_loss aligned with
+            # the inference behaviour instead of the teacher-forced training
+            # behaviour.
+            self.val["X_decoder"][:, :, 0] = self.val["X_decoder"][:, :1, 0]
 
         return self
     def build(self, hp):

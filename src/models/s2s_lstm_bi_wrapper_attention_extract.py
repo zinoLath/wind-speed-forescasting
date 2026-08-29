@@ -69,7 +69,7 @@ class S2SLSTMBidirectionalWrapperAttentionExtract(Seq2SeqWrapper):
         decoder_outputs_final = decoder_dense(decoder_combined_context)
         
         self.model = Model([encoder_inputs, decoder_inputs], decoder_outputs_final)
-        self.model.compile(optimizer=optimizer, loss='mse', metrics=['mae'])
+        self.model.compile(optimizer=optimizer, loss=getattr(self, 'loss', 'mse'), metrics=['mae'])
 
         self.attention_model = Model(
             inputs=[encoder_inputs, decoder_inputs], 

@@ -200,7 +200,9 @@ class S2STransformerWrapper(Seq2SeqWrapper):
 
         self.model = Model([encoder_inputs, decoder_inputs], decoder_outputs_final)
         self.model.compile(
-            optimizer=Adam(learning_rate=learning_rate), loss='mse', metrics=['mae']
+            optimizer=Adam(learning_rate=learning_rate),
+            loss=getattr(self, 'loss', 'mse'),
+            metrics=['mae'],
         )
 
         return self.model

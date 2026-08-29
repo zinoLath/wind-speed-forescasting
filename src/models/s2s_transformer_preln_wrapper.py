@@ -167,7 +167,7 @@ class S2STransformerPrelnWrapper(Seq2SeqWrapper):
             )
         self.model.compile(
             optimizer=optimizer,
-            loss=getattr(self, 'loss', 'mae'),
+            loss=getattr(self, 'loss', 'mse'),
             metrics=['mae'],
         )
 

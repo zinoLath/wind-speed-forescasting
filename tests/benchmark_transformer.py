@@ -87,8 +87,7 @@ def build_wrapper(wrapper_key, dataset, params, input_steps, output_steps, epoch
         wrapper.weight_decay = weight_decay
     if clipnorm:
         wrapper.clipnorm = clipnorm
-    if loss != "mse":
-        wrapper.loss = loss
+    wrapper.loss = loss
 
     wrapper.build(FixedHyperParameters(params))
 
@@ -146,7 +145,8 @@ def parse_args():
     parser.add_argument("--target-mode", choices=["absolute", "residual"], default="absolute")
     parser.add_argument("--weight-decay", type=float, default=0.0, help="AdamW weight decay.")
     parser.add_argument("--clipnorm", type=float, default=None, help="Global gradient norm clipping.")
-    parser.add_argument("--loss", choices=["mse", "mae", "huber"], default="mse")
+    parser.add_argument("--loss", choices=["mse", "mae", "huber"], default="mse",
+                        help="Training loss; MSE punishes large errors harder.")
     return parser.parse_args()
 
 
