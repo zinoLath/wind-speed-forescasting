@@ -22,6 +22,7 @@ from src.models.s2s_lstm_wrapper import S2SLSTMWrapper
 from src.models.s2s_tcn_bi_wrapper import S2STCNBidirectionalWrapper
 from src.models.s2s_tcn_lstm_wrapper import S2STCNLSTMWrapper
 from src.models.s2s_tcn_wrapper import S2STCNWrapper
+from src.models.s2s_transformer_preln_wrapper import S2STransformerPrelnWrapper
 from tests.optuna_all_hyperparameters import load_dataset, split_dataset
 
 
@@ -60,6 +61,7 @@ WRAPPERS = {
     "tcn": S2STCNWrapper,
     "tcn_bi": S2STCNBidirectionalWrapper,
     "tcn_lstm": S2STCNLSTMWrapper,
+    "transformer": S2STransformerPrelnWrapper,
 }
 
 
@@ -101,6 +103,11 @@ def evaluate_wrapper(wrapper_key, dataset, params_file, epochs, input_steps, out
         denoise_level=2,
     )
     wrapper.build(FixedHyperParameters(best_params))
+
+    if hasattr(wrapper, "schedule_total_steps"):
+        n_train = len(train_df)
+        steps_per_epoch = int(np.ceil(n_train / 32))
+        wrapper.schedule_total_steps = steps_per_epoch * epochs
 
     history = wrapper.fit(
         epochs=epochs,

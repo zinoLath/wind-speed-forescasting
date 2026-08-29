@@ -57,6 +57,13 @@ python tests/validate_rf_impute_detailed.py --n-samples 30 --gap-lengths 1 2 3 5
 
 # Walk-forward validation on imputed data, retraining at each window
 python tests/wfo_imputed.py --models lstm lstm_bi tcn tcn_bi --train-window-days 30 --test-window-days 7 --step-days 7
+
+# Pipeline in stages (optuna -> train -> evaluate -> impute -> walkforward)
+python pipeline/pipeline.py                  # full pipeline
+python pipeline/pipeline.py --stage train evaluate   # only some stages
+python pipeline/step_train.py                # run a single stage standalone
+# All pipeline stages accept --config pipeline/pipeline.json (overrides
+# pipeline/pipeline.default.json). See pipeline/README.md.
 ```
 
 There are no linter, formatter, type-checker, or test runner commands configured. No CI workflows exist.

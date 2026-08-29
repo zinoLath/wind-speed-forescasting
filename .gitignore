@@ -100,3 +100,5 @@ dmypy.json
 /OLD/
 /images/
 /scripts/
+# Pipeline temporary outputs (overwritten on every run)
+/pipeline/tmp/

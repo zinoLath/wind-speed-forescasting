@@ -257,7 +257,7 @@ class Seq2SeqWrapper:
             last_actual = test_data[i + self.output_steps - 1, self.target_col_index]
             actuals.append(last_actual)
             
-            window = np.vstack([window, test_data[i]])
+            window = np.vstack([window, test_data[i + self.output_steps - 1]])
             window = window[1:] 
         
         predictions = np.array(predictions).reshape(-1, 1)

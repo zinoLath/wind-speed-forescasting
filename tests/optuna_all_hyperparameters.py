@@ -76,6 +76,7 @@ from src.models.s2s_lstm_wrapper import S2SLSTMWrapper
 from src.models.s2s_tcn_bi_wrapper import S2STCNBidirectionalWrapper
 from src.models.s2s_tcn_lstm_wrapper import S2STCNLSTMWrapper
 from src.models.s2s_tcn_wrapper import S2STCNWrapper
+from src.models.s2s_transformer_preln_wrapper import S2STransformerPrelnWrapper
 
 
 def verify_cuda_gpu():
@@ -333,6 +334,12 @@ def build_objective(
             denoise_level=denoise_level,
         )
 
+        if hasattr(wrapper, "schedule_total_steps"):
+            # Transformer wrappers train better with warmup + cosine decay.
+            n_train = len(train_df)
+            steps_per_epoch = int(np.ceil(n_train / 32))
+            wrapper.schedule_total_steps = steps_per_epoch * epochs
+
         wrapper.build(OptunaHyperParameters(trial))
         print(f"[trial {trial.number}] params={trial.params}")
         callbacks = [
@@ -497,8 +504,8 @@ def parse_args():
     parser.add_argument(
         "--wrappers",
         nargs="*",
-        default=["lstm", "lstm_bi", "tcn", "tcn_bi", "tcn_lstm"],
-        choices=["lstm", "lstm_bi", "tcn", "tcn_bi", "tcn_lstm"],
+        default=["lstm", "lstm_bi", "tcn", "tcn_bi", "tcn_lstm", "transformer"],
+        choices=["lstm", "lstm_bi", "tcn", "tcn_bi", "tcn_lstm", "transformer"],
         help="Wrappers a serem otimizados.",
     )
     return parser.parse_args()
@@ -515,6 +522,7 @@ def main():
         "tcn": S2STCNWrapper,
         "tcn_bi": S2STCNBidirectionalWrapper,
         "tcn_lstm": S2STCNLSTMWrapper,
+        "transformer": S2STransformerPrelnWrapper,
     }
 
     for wrapper_key in args.wrappers:

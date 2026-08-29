@@ -1,0 +1,102 @@
+{
+  "paths": {
+    "dataset_csv": "data/dataset.csv",
+    "wind_data_csv": "data/wind_data.csv",
+    "models_dir": "models/best_model",
+    "results_dir": "data/results",
+    "tmp_dir": "pipeline/tmp"
+  },
+  "gpu": {
+    "enabled": true
+  },
+  "optuna": {
+    "enabled": true,
+    "wrappers": ["lstm", "lstm_bi", "tcn", "tcn_bi", "tcn_lstm", "transformer"],
+    "n_trials": 100,
+    "epochs": 60,
+    "batch_size": 32,
+    "patience": 8,
+    "input_steps": 72,
+    "output_steps": 36,
+    "target_col": "ws100_wavelet",
+    "denoise": ["ws100"],
+    "denoise_level": 2,
+    "seed": 42,
+    "timeout_sec": null,
+    "pruning": true,
+    "train_ratio": 0.75,
+    "val_ratio": 0.2
+  },
+  "train": {
+    "enabled": true,
+    "wrapper": "lstm_bi",
+    "epochs": 100,
+    "batch_size": 32,
+    "patience": 8,
+    "input_steps": 72,
+    "output_steps": 36,
+    "target_col": "ws100_wavelet",
+    "denoise": ["ws100"],
+    "denoise_level": 2,
+    "seed": 42,
+    "verbose": 1,
+    "train_ratio": 0.75,
+    "val_ratio": 0.2,
+    "params_source": "optuna",
+    "hyperparameters": {}
+  },
+  "evaluate": {
+    "enabled": true,
+    "model_path": null,
+    "model_json_path": null,
+    "output_dir": null
+  },
+  "impute": {
+    "enabled": true,
+    "input": null,
+    "methods": ["random_forest", "lightgbm"],
+    "method_params": {
+      "random_forest": {
+        "n_estimators": 100,
+        "max_iter": 10,
+        "random_state": 42,
+        "train_sample": 3000
+      },
+      "lightgbm": {
+        "n_estimators": 100,
+        "max_iter": 10,
+        "random_state": 42,
+        "train_sample": 3000
+      }
+    },
+    "validation": {
+      "n_samples": 30,
+      "gap_lengths": [1, 2, 3, 5, 10, 20, 36],
+      "seed": 42,
+      "train_sample": 3000
+    },
+    "output_dir": "data/impute"
+  },
+  "walkforward": {
+    "enabled": true,
+    "wrappers": ["lstm", "lstm_bi"],
+    "input": null,
+    "train_window_days": 60,
+    "test_window_days": 30,
+    "step_days": 30,
+    "input_steps": 72,
+    "output_steps": 36,
+    "target_col": "ws100",
+    "denoise": ["ws100"],
+    "denoise_level": 2,
+    "epochs": 60,
+    "batch_size": 32,
+    "patience": 12,
+    "train_val_ratio": 0.8,
+    "seed": 42,
+    "verbose": 0,
+    "params_source": "optuna",
+    "hyperparameters": {},
+    "output_dir": null
+  }
+}

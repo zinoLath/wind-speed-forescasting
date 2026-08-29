@@ -32,7 +32,7 @@ DEFAULT_DENOISE_LEVEL = 1
 DEFAULT_EPOCHS = 100
 DEFAULT_BATCH_SIZE = 32
 DEFAULT_PATIENCE = 12
-DEFAULT_MODELS = ["lstm", "lstm_bi", "tcn", "tcn_bi"]
+DEFAULT_MODELS = ["lstm", "lstm_bi", "tcn", "tcn_bi", "transformer"]
 DEFAULT_RANDOM_STATE = 42
 DEFAULT_RAW_INPUT_FILE = "data/wind_data.csv"
 
@@ -74,6 +74,14 @@ DEFAULT_HP = {
         "decoder_nb_stacks": 2,
         "decoder_dropout_rate": 0.0,
         "decoder_dilation_rate": 1,
+    },
+    "transformer": {
+        "learning_rate": 0.0006,
+        "d_model": 128,
+        "num_heads": 8,
+        "num_layers": 3,
+        "ff_dim": 256,
+        "dropout_rate": 0.1,
     },
 }
 
@@ -160,6 +168,7 @@ from src.models.s2s_lstm_bi_wrapper import S2SLSTMBidirectionalWrapper
 from src.models.s2s_lstm_wrapper import S2SLSTMWrapper
 from src.models.s2s_tcn_bi_wrapper import S2STCNBidirectionalWrapper
 from src.models.s2s_tcn_wrapper import S2STCNWrapper
+from src.models.s2s_transformer_preln_wrapper import S2STransformerPrelnWrapper
 from src.utils import wavelet_denoising
 
 
@@ -168,6 +177,7 @@ WRAPPERS = {
     "lstm_bi": S2SLSTMBidirectionalWrapper,
     "tcn": S2STCNWrapper,
     "tcn_bi": S2STCNBidirectionalWrapper,
+    "transformer": S2STransformerPrelnWrapper,
 }
 
 RETAINED_MODES = {
@@ -407,6 +417,11 @@ def train_and_predict_window(
     if decoder_mode == "teacher_forcing":
         # Early stopping must use the decoder inputs available at inference.
         wrapper.val["X_decoder"][:, :, 0] = wrapper.val["X_decoder"][:, :1, 0]
+    if hasattr(wrapper, "schedule_total_steps"):
+        # Transformer wrappers train better with warmup + cosine decay.
+        n_train_samples = len(wrapper.train["X_encoder"])
+        steps_per_epoch = int(np.ceil(n_train_samples / batch_size))
+        wrapper.schedule_total_steps = steps_per_epoch * epochs
     wrapper.build(hp)
     if loss_name == "mae":
         wrapper.model.compile(

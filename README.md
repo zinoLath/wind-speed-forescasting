@@ -30,8 +30,30 @@ Wind-Speed-Forecasting/
 │   └── best_model.h5.keras   # Modelo salvo (não incluído no repositório)
 ├── images/                   # Gráficos e visualizações gerados
 ├── src/                      # Código fonte
+│   ├── impute/               # Implementações de imputação (RF, LightGBM)
 │   └── simulation.py         # Script para simulação de previsões em tempo real
+├── pipeline/                 # Pipeline de treinamento/avaliação em estágios
+│   ├── pipeline.py           # Orquestrador (roda todos os estágios)
+│   └── README.md             # Documentação completa da pipeline
 └── README.md                 # Este arquivo
+```
+
+## 🔬 Pipeline de Testes (treinamento, avaliação e imputação)
+
+O repositório inclui uma pipeline em estágios que automatiza a otimização de
+hiperparâmetros, treinamento, avaliação, imputação e validação walk-forward.
+Veja [`pipeline/README.md`](pipeline/README.md).
+
+Para rodar a pipeline completa:
+
+```bash
+python pipeline/pipeline.py
+```
+
+Ou apenas uma etapa (ex.: treinar):
+
+```bash
+python pipeline/step_train.py
 ```
 
 ## 🔧 Como Usar
