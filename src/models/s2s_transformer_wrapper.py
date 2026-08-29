@@ -135,11 +135,7 @@ class S2STransformerWrapper(Seq2SeqWrapper):
         self.name = "Seq2Seq_Transformer"
 
     def build(self, hp):
-        if not hasattr(self, 'train') or not hasattr(self, 'val'):
-            raise ValueError(
-                "Os dados de treinamento e validação devem ser preparados antes de construir o modelo. "
-                "Chame o método 'prepare' primeiro."
-            )
+        self._require_prepared()
 
         learning_rate = make_learning_rate(
             hp, schedule_total_steps=getattr(self, 'schedule_total_steps', None)

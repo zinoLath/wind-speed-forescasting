@@ -154,6 +154,14 @@ class Seq2SeqWrapper:
             self.val["X_decoder"][:, :, 0] = self.val["X_decoder"][:, :1, 0]
 
         return self
+    def _require_prepared(self):
+        """Raise if prepare() has not run yet (subclasses call this in build())."""
+        if not hasattr(self, "train") or not hasattr(self, "val"):
+            raise ValueError(
+                "Os dados de treinamento e validação devem ser preparados antes de "
+                "construir o modelo. Chame o método 'prepare' primeiro."
+            )
+
     def build(self, hp):
         raise NotImplementedError("O método 'build' deve ser implementado nas subclasses específicas do modelo.")
 

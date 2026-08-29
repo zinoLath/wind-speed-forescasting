@@ -107,6 +107,18 @@ def wrapper_factory(key):
     return getattr(module, class_name)
 
 
+def validate_wrapper_names():
+    """Ensure every registered wrapper has a unique ``.name``.
+
+    Wrapper names double as results-directory names, so duplicates would make
+    runs silently overwrite each other's artifacts.
+    """
+    names = [wrapper_factory(key)().name for key in WRAPPERS]
+    duplicates = sorted({name for name in names if names.count(name) > 1})
+    if duplicates:
+        raise RuntimeError(f"Duplicate wrapper names in the registry: {duplicates}")
+
+
 class FixedHyperParameters:
     """Adapter that feeds a fixed dict of hyperparameters into a wrapper.build()."""
 

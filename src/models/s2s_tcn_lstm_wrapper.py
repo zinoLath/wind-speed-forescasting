@@ -1,5 +1,3 @@
-import numpy as np
-from tensorflow.keras import backend as K
 from tensorflow.keras.models import Model
 from tensorflow.keras.layers import (
     Input,
@@ -14,6 +12,7 @@ from tensorflow.keras.layers import (
 from tensorflow.keras.optimizers import Adam
 from tcn import TCN
 from .seq2seq_wrapper import Seq2SeqWrapper
+from .tcn_hp import tcn_hyperparameters
 
 
 class S2STCNLSTMWrapper(Seq2SeqWrapper):
@@ -22,33 +21,16 @@ class S2STCNLSTMWrapper(Seq2SeqWrapper):
         self.name = "Seq2Seq_TCN_LSTM"
 
     def build(self, hp):
-        if not hasattr(self, 'train') or not hasattr(self, 'val'):
-            raise ValueError(
-                "Os dados de treinamento e validação devem ser preparados antes de construir o modelo. "
-                "Chame o método 'prepare' primeiro."
-            )
+        self._require_prepared()
 
         learning_rate = hp.Float(
             'learning_rate', min_value=1e-4, max_value=1e-2, sampling='LOG', default=0.001
         )
 
-        encoder_tcn_hp = {}
-        encoder_tcn_hp['filters'] = hp.Int(
-            'encoder_filters', min_value=32, max_value=256, step=16, default=128
+        encoder_tcn_hp = tcn_hyperparameters(
+            hp, "encoder", filters=128, kernel_size=3, nb_stacks=1,
+            dropout_rate=0.1, dilation_rate=4,
         )
-        encoder_tcn_hp['kernel_size'] = hp.Int(
-            'encoder_kernel_size', min_value=2, max_value=3, step=1, default=3
-        )
-        encoder_tcn_hp['nb_stacks'] = hp.Int(
-            'encoder_nb_stacks', min_value=1, max_value=2, step=1, default=1
-        )
-        encoder_tcn_hp['dropout_rate'] = hp.Float(
-            'encoder_dropout_rate', min_value=0.0, max_value=0.5, step=0.05, default=0.1
-        )
-        encoder_tcn_hp['dilation_rate'] = hp.Int(
-            'encoder_dilation_rate', min_value=1, max_value=5, step=1, default=4
-        )
-        encoder_tcn_hp['dilations'] = [2 ** i for i in range(encoder_tcn_hp['dilation_rate'])]
 
         lstm_units = hp.Int(
             'lstm_units', min_value=64, max_value=256, step=32, default=128

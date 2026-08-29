@@ -10,8 +10,7 @@ class S2SLSTMBidirectionalWrapper(Seq2SeqWrapper):
         self.name = "Seq2Seq_LSTM_Bidirectional"
         
     def build(self, hp):
-        if not hasattr(self, 'train') or not hasattr(self, 'val'):
-            raise ValueError("Os dados de treinamento e validação devem ser preparados antes de construir o modelo. Chame o método 'prepare' primeiro.")
+        self._require_prepared()
 
         learning_rate = hp.Float('learning_rate', min_value=1e-5, max_value=1e-2, sampling='LOG', default = 0.006403023029268099)
 

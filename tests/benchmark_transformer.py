@@ -36,12 +36,13 @@ from src.models.s2s_lstm_bi_wrapper import S2SLSTMBidirectionalWrapper  # noqa: 
 from src.models.s2s_lstm_wrapper import S2SLSTMWrapper  # noqa: E402
 from src.models.s2s_tcn_bi_wrapper import S2STCNBidirectionalWrapper  # noqa: E402
 from src.models.s2s_tcn_wrapper import S2STCNWrapper  # noqa: E402
-from src.models.s2s_transformer_autoreg_wrapper import S2STransformerAutoregressiveWrapper  # noqa: E402
 from src.models.s2s_transformer_preln_wrapper import S2STransformerPrelnWrapper  # noqa: E402
 from src.models.s2s_transformer_wrapper import S2STransformerWrapper  # noqa: E402
 
 
 # Extends the common registry with the transformer variants benchmarked here.
+# (The autoregressive decoder lives in OLD/models/: measured strictly worse
+# and retired — see docs/estudo_transformer.md.)
 WRAPPERS = {
     "lstm": S2SLSTMWrapper,
     "lstm_bi": S2SLSTMBidirectionalWrapper,
@@ -49,7 +50,6 @@ WRAPPERS = {
     "tcn_bi": S2STCNBidirectionalWrapper,
     "transformer": S2STransformerWrapper,
     "transformer_preln": S2STransformerPrelnWrapper,
-    "transformer_autoreg": S2STransformerAutoregressiveWrapper,
 }
 
 

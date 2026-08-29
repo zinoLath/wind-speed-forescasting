@@ -52,6 +52,7 @@ def main():
 
     common.ensure_project_root_on_path()
     config = config_module.load_config(args.config)
+    common.validate_wrapper_names()
 
     if args.stage:
         stages = args.stage
