@@ -16,7 +16,8 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from pipeline import common, config as config_module
+from src import common
+from pipeline import config as config_module
 from src.impute import base
 
 STAGE = "impute"
@@ -60,6 +61,10 @@ def run(config):
 
         print(f"Validating {method} on artificial gaps...")
         validation = cfg["validation"]
+        validation_kwargs = dict(imputer_kwargs)
+        # The imputation params take precedence so the reported validation
+        # error corresponds to the dataset actually produced above.
+        validation_kwargs.setdefault("train_sample", validation["train_sample"])
         detailed, summary, overall, settings = base.validate(
             module.impute_dataframe,
             method,
@@ -67,7 +72,7 @@ def run(config):
             n_samples=validation["n_samples"],
             gap_lengths=validation["gap_lengths"],
             seed=validation["seed"],
-            imputer_kwargs={**imputer_kwargs, "train_sample": validation["train_sample"]},
+            imputer_kwargs=validation_kwargs,
         )
         print(
             f"[{method}] validation MAE={overall['mae']:.4f} "

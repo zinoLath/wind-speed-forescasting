@@ -1,13 +1,7 @@
-from curses import window
 
 from sklearn.preprocessing import MinMaxScaler
 import numpy as np
 from ..utils import wavelet_denoising
-from tensorflow.keras.models import Model
-from tensorflow.keras.layers import Input, LSTM, Bidirectional, Dropout, Dense, Concatenate, TimeDistributed, Attention
-from tensorflow.keras.optimizers import Adam
-from tensorflow.keras.callbacks import EarlyStopping, ReduceLROnPlateau, ModelCheckpoint
-from tcn import TCN
 
 class Seq2SeqWrapper:
 
@@ -60,7 +54,7 @@ class Seq2SeqWrapper:
         
         return np.array(X_encoder), np.array(X_decoder), np.array(y_decoder)
 
-    def prepare_data(self, data, input_steps, output_steps, target_col, scaler_target=None, scaler_other=None, create_sequences=True, denoise=["ws100"], decoder_mode=None, target_mode=None):
+    def prepare_data(self, data, input_steps, output_steps, target_col, scaler_target=None, scaler_other=None, create_sequences=True, denoise=("ws100",), decoder_mode=None, target_mode=None):
         data = data.copy()
         values = {}# Aplica o denoising em cada coluna e armazena os resultados
         for col in denoise:
@@ -103,12 +97,12 @@ class Seq2SeqWrapper:
         values['target_col_index'] = target_col_index
         return values, variables_scaled
 
-    def prepare(self, train_data, val_data, input_steps=72, output_steps=36, denoise_level=2, target_col='ws100_wavelet', denoise=["ws100"], decoder_mode="teacher_forcing", target_mode="absolute"):
+    def prepare(self, train_data, val_data, input_steps=72, output_steps=36, denoise_level=2, target_col='ws100_wavelet', denoise=("ws100",), decoder_mode="teacher_forcing", target_mode="absolute"):
         
         self.input_steps = input_steps
         self.output_steps = output_steps
         self.target_col = target_col
-        self.denoise = denoise
+        self.denoise = tuple(denoise)
         self.denoise_level = denoise_level
         self.decoder_mode = decoder_mode
         self.target_mode = target_mode
@@ -133,7 +127,7 @@ class Seq2SeqWrapper:
         
         return self
     def build(self, hp):
-        return NotImplementedError("O método 'build' deve ser implementado nas subclasses específicas do modelo.")
+        raise NotImplementedError("O método 'build' deve ser implementado nas subclasses específicas do modelo.")
 
     def fit(self, epochs=100, batch_size=32, callbacks=None, verbose=1, use_validation=False):
         fit_kwargs = {

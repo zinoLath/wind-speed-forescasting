@@ -1,4 +1,3 @@
-from curses import window
 
 from sklearn.preprocessing import MinMaxScaler
 import numpy as np

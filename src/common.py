@@ -1,7 +1,9 @@
-"""Shared helpers for the pipeline stages.
+"""Shared helpers for training, evaluation and the pipeline stages.
 
 This module is side-effect free at import time: TensorFlow is configured
-explicitly by ``setup_tensorflow`` before any model class is imported.
+explicitly by ``setup_tensorflow`` before any model class is imported. It is
+the single source of truth for GPU setup, dataset loading, the wrapper
+registry, hyperparameter adapters and metrics.
 """
 
 import ctypes
@@ -146,6 +148,31 @@ class OptunaHyperParameters:
 
     def Choice(self, name, values, default=None):
         return self.trial.suggest_categorical(name, values)
+
+
+def optuna_pruning_callback(trial):
+    """Keras callback that reports val_loss to Optuna for trial pruning.
+
+    Created through a factory so this module stays import-free of TensorFlow.
+    """
+    from keras.callbacks import Callback
+
+    class _PruningCallback(Callback):
+        def __init__(self, trial):
+            super().__init__()
+            self.trial = trial
+
+        def on_epoch_end(self, epoch, logs=None):
+            val_loss = (logs or {}).get("val_loss")
+            if val_loss is None:
+                return
+            self.trial.report(float(val_loss), step=epoch)
+            if self.trial.should_prune():
+                import optuna
+
+                raise optuna.TrialPruned(f"Trial pruned at epoch {epoch}")
+
+    return _PruningCallback(trial)
 
 
 # Hyperparameters used when no Optuna result is available.
@@ -391,18 +418,41 @@ def write_json(path, data):
         json.dump(data, handle, indent=2, default=str)
 
 
-def find_optuna_result(wrapper_key, config):
-    """Locate an Optuna best_trial.json for a wrapper, checking tmp then results."""
-    wrapper_name = wrapper_factory(wrapper_key)().name
-    candidates = [
-        Path(config["paths"]["tmp_dir"]) / "optuna" / wrapper_name / "best_trial.json",
-        Path(config["paths"]["results_dir"]) / "optuna" / wrapper_name / "best_trial.json",
-    ]
-    for candidate in candidates:
-        path = resolve(candidate)
+def find_optuna_result(
+    wrapper_key=None,
+    tmp_dir="pipeline/tmp",
+    results_dir="data/results",
+    wrapper_name=None,
+):
+    """Locate an Optuna best_trial.json for a wrapper, checking tmp then results.
+
+    The result directory is named after the wrapper's ``.name`` attribute,
+    taken from the registry via *wrapper_key* or given directly as
+    *wrapper_name* (for wrappers outside the registry).
+    """
+    if wrapper_name is None:
+        wrapper_name = wrapper_factory(wrapper_key)().name
+    for base in (tmp_dir, results_dir):
+        path = resolve(Path(base) / "optuna" / wrapper_name / "best_trial.json")
         if path.is_file():
             return path
     return None
+
+
+def load_best_params(wrapper_key=None, params_file=None, wrapper_name=None):
+    """Load the best hyperparameters saved by an Optuna search.
+
+    Returns (path, best_params).
+    """
+    path = (
+        Path(params_file)
+        if params_file
+        else find_optuna_result(wrapper_key, wrapper_name=wrapper_name)
+    )
+    if path is None or not path.is_file():
+        raise FileNotFoundError(f"No Optuna result found for wrapper '{wrapper_key or wrapper_name}'.")
+    with open(path, encoding="utf-8") as handle:
+        return path, json.load(handle)["best_params"]
 
 
 def resolve_hyperparameters(wrapper_key, section, config):
@@ -420,7 +470,9 @@ def resolve_hyperparameters(wrapper_key, section, config):
         return dict(cfg), "explicit config"
 
     if source == "optuna":
-        path = find_optuna_result(wrapper_key, config)
+        path = find_optuna_result(
+            wrapper_key, config["paths"]["tmp_dir"], config["paths"]["results_dir"]
+        )
         if path is not None:
             with open(path, encoding="utf-8") as handle:
                 return json.load(handle)["best_params"], str(path)

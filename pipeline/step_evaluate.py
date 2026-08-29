@@ -27,7 +27,8 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import pandas as pd
 
-from pipeline import common, config as config_module
+from src import common
+from pipeline import config as config_module
 
 STAGE = "evaluate"
 
@@ -141,9 +142,15 @@ def run(config):
     all_df = common.predict_all_horizons(wrapper, test_df)
     with contextlib.redirect_stdout(io.StringIO()):
         roll_pred, roll_actual = wrapper.rolling_forecast(dataset, test_start=val_end)
+
+    # rolling_forecast advance index i covers target rows i..i+output_steps-1,
+    # so prediction k refers to the target row val_end + k + output_steps - 1
+    # and was issued from the window ending at val_end + k - 1.
+    target_offset = val_end + wrapper.output_steps - 1
     roll_df = pd.DataFrame(
         {
-            "timestamp": dataset.index[val_end : val_end + len(roll_actual)],
+            "origin": dataset.index[val_end - 1 : val_end - 1 + len(roll_actual)],
+            "timestamp": dataset.index[target_offset : target_offset + len(roll_actual)],
             "actual": roll_actual.ravel(),
             "predicted": roll_pred.ravel(),
         }

@@ -14,17 +14,18 @@ the outputs of every stage is saved to ``pipeline/tmp/pipeline_run.json``.
 """
 
 import argparse
+import sys
 import time
+import traceback
 from datetime import datetime, timezone
 from pathlib import Path
-
-import sys
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from pipeline import common, config as config_module
+from src import common
+from pipeline import config as config_module
 from pipeline import step_evaluate, step_impute, step_optuna, step_train, step_walkforward
 
 STAGES = {
@@ -71,16 +72,21 @@ def main():
         started_at = time.perf_counter()
         try:
             result = STAGES[name].run(config)
-            run_report["stages"][name] = {
+            stage_entry = {
                 "status": "ok",
                 "elapsed_sec": round(time.perf_counter() - started_at, 3),
                 "outputs": result,
             }
+            warnings = result.get("warnings") if isinstance(result, dict) else None
+            if warnings:
+                stage_entry["warnings"] = warnings
+            run_report["stages"][name] = stage_entry
         except Exception as exc:
             run_report["stages"][name] = {
                 "status": "error",
                 "elapsed_sec": round(time.perf_counter() - started_at, 3),
                 "error": str(exc),
+                "traceback": traceback.format_exc(),
             }
             print(f"\nStage {name} failed: {exc}")
             break

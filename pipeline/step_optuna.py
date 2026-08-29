@@ -17,46 +17,35 @@ import numpy as np
 import optuna
 import pandas as pd
 
-from pipeline import common, config as config_module
+from src import common
+from pipeline import config as config_module
 
 STAGE = "optuna"
 
 
 def _run_search(wrapper_key, train_df, val_df, cfg, out_dir):
     from keras import backend as K
-    from keras.callbacks import Callback, EarlyStopping, ReduceLROnPlateau
+    from keras.callbacks import EarlyStopping, ReduceLROnPlateau
 
-    class PruningCallback(Callback):
-        """Keras callback that reports val_loss to Optuna for trial pruning."""
-
-        def __init__(self, trial):
-            super().__init__()
-            self.trial = trial
-
-        def on_epoch_end(self, epoch, logs=None):
-            val_loss = (logs or {}).get("val_loss")
-            if val_loss is None:
-                return
-            self.trial.report(float(val_loss), step=epoch)
-            if self.trial.should_prune():
-                raise optuna.TrialPruned(f"Trial pruned at epoch {epoch}")
+    # Data preparation (wavelet denoising, scalers, sequences) does not depend
+    # on the trial hyperparameters, so it runs once and is reused by every
+    # trial through the same wrapper instance (build() replaces only the model).
+    wrapper = common.wrapper_factory(wrapper_key)()
+    wrapper.prepare(
+        train_df,
+        val_df,
+        input_steps=cfg["input_steps"],
+        output_steps=cfg["output_steps"],
+        target_col=cfg["target_col"],
+        denoise=cfg["denoise"],
+        denoise_level=cfg["denoise_level"],
+    )
+    if hasattr(wrapper, "schedule_total_steps"):
+        steps_per_epoch = int(np.ceil(len(train_df) / cfg["batch_size"]))
+        wrapper.schedule_total_steps = steps_per_epoch * cfg["epochs"]
 
     def objective(trial):
         K.clear_session()
-        wrapper = common.wrapper_factory(wrapper_key)()
-        wrapper.prepare(
-            train_df,
-            val_df,
-            input_steps=cfg["input_steps"],
-            output_steps=cfg["output_steps"],
-            target_col=cfg["target_col"],
-            denoise=cfg["denoise"],
-            denoise_level=cfg["denoise_level"],
-        )
-        if hasattr(wrapper, "schedule_total_steps"):
-            steps_per_epoch = int(np.ceil(len(train_df) / cfg["batch_size"]))
-            wrapper.schedule_total_steps = steps_per_epoch * cfg["epochs"]
-
         wrapper.build(common.OptunaHyperParameters(trial))
         callbacks = [
             EarlyStopping(
@@ -68,7 +57,7 @@ def _run_search(wrapper_key, train_df, val_df, cfg, out_dir):
             ),
         ]
         if cfg.get("pruning", True):
-            callbacks.append(PruningCallback(trial))
+            callbacks.append(common.optuna_pruning_callback(trial))
 
         started_at = time.perf_counter()
         history = wrapper.fit(
@@ -101,7 +90,11 @@ def _run_search(wrapper_key, train_df, val_df, cfg, out_dir):
         n_ei_candidates=64,
     )
     pruner = optuna.pruners.MedianPruner(n_startup_trials=10, n_warmup_steps=8)
-    study = optuna.create_study(direction="minimize", sampler=sampler, pruner=pruner)
+    storage = f"sqlite:///{out_dir / 'optuna.db'}"
+    study = optuna.create_study(
+        direction="minimize", sampler=sampler, pruner=pruner,
+        storage=storage, study_name=wrapper_key, load_if_exists=True,
+    )
 
     started_at = time.perf_counter()
     study.optimize(
@@ -136,6 +129,7 @@ def _run_search(wrapper_key, train_df, val_df, cfg, out_dir):
 def run(config):
     tf = common.setup_tensorflow(config["gpu"]["enabled"])
     print(f"TensorFlow {tf.__version__} | GPUs: {tf.config.list_physical_devices('GPU')}")
+    tf.keras.utils.set_random_seed(config[STAGE]["seed"])
 
     cfg = config[STAGE]
     dataset = common.load_dataset(common.resolve(config["paths"]["dataset_csv"]))

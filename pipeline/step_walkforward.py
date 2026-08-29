@@ -11,9 +11,9 @@ the pipeline falls back to ``data/dataset.csv`` when no imputed dataset exists.
 """
 
 import argparse
-from pathlib import Path
-
 import sys
+import time
+from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
@@ -21,7 +21,8 @@ if str(PROJECT_ROOT) not in sys.path:
 
 import pandas as pd
 
-from pipeline import common, config as config_module
+from src import common
+from pipeline import config as config_module
 
 STAGE = "walkforward"
 
@@ -29,7 +30,16 @@ ROWS_PER_DAY = 24 * 6  # 10-minute data
 
 
 def load_input_frame(path):
-    """Load an input CSV and normalise it to a DatetimeIndex."""
+    """Load an input CSV and normalise it to a DatetimeIndex.
+
+    Supports both imputed wind-data CSVs (``timestamp`` column) and the raw
+    forecast dataset (``id`` column, heavy columns to drop), which is the
+    fallback when no imputed dataset exists.
+    """
+    header = pd.read_csv(path, nrows=0)
+    if "id" in header.columns:
+        return common.load_dataset(path)
+
     df = pd.read_csv(path)
     df["timestamp"] = pd.to_datetime(df["timestamp"])
     df = df.sort_values("timestamp").set_index("timestamp")
@@ -106,8 +116,18 @@ def _train_and_predict(wrapper, train_df, eval_df, cfg, hyperparameters):
 
 
 def _evaluate_wrapper(wrapper_key, df, cfg, config, out_dir):
-    """Run the full walk-forward for one model and save per-window artifacts."""
-    hyperparameters, params_source = common.resolve_hyperparameters(wrapper_key, cfg, config)
+    """Run the full walk-forward for one model and save per-window artifacts.
+
+    Returns an artifacts dict, or ``{"no_windows": True}`` when the dataset is
+    too short for a single window.
+    """
+    try:
+        hyperparameters, params_source = common.resolve_hyperparameters(wrapper_key, cfg, config)
+    except FileNotFoundError as exc:
+        print(f"[{wrapper_key}] WARNING: {exc} Using built-in defaults instead.")
+        hyperparameters = dict(common.DEFAULT_HYPERPARAMETERS[wrapper_key])
+        params_source = "built-in defaults (optuna result missing)"
+
     wrapper_class = common.wrapper_factory(wrapper_key)
     wrapper_name = wrapper_class().name
 
@@ -137,7 +157,6 @@ def _evaluate_wrapper(wrapper_key, df, cfg, config, out_dir):
             f"test {df.index[test_start]}->{df.index[test_start + test_rows - 1]}"
         )
 
-        import time
         started_at = time.perf_counter()
         wrapper = wrapper_class()
         pred_df, metrics = _train_and_predict(wrapper, train_df, test_df, cfg, hyperparameters)
@@ -171,7 +190,7 @@ def _evaluate_wrapper(wrapper_key, df, cfg, config, out_dir):
             f"need at least {train_rows + test_rows}. Reduce train/test window days "
             "or provide a longer dataset."
         )
-        return {}
+        return {"no_windows": True}
 
     pd.DataFrame(window_records).to_csv(model_dir / "metrics.csv", index=False)
 
@@ -238,11 +257,17 @@ def run(config):
     )
 
     results = {}
+    warnings = []
     for wrapper_key in cfg["wrappers"]:
         print(f"\n=== Walk-forward: {wrapper_key} ===")
         results[wrapper_key] = _evaluate_wrapper(wrapper_key, df, cfg, config, out_dir)
+        if results[wrapper_key].get("no_windows"):
+            warnings.append(
+                f"{wrapper_key}: no walk-forward windows generated "
+                f"(dataset too short for the configured windows)."
+            )
 
-    return {"artifacts": results}
+    return {"artifacts": results, "warnings": warnings}
 
 
 def main():

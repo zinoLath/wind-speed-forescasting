@@ -1,13 +1,7 @@
-from curses import window
 
-from sklearn.preprocessing import MinMaxScaler
-import numpy as np
-from ..utils import wavelet_denoising
 from tensorflow.keras.models import Model
-from tensorflow.keras.layers import Input, LSTM, Bidirectional, Dropout, Dense, Concatenate, TimeDistributed, Attention
+from tensorflow.keras.layers import Input, LSTM, Dropout, Dense, Concatenate, TimeDistributed, Attention
 from tensorflow.keras.optimizers import Adam
-from tensorflow.keras.callbacks import EarlyStopping, ReduceLROnPlateau, ModelCheckpoint
-from tcn import TCN
 from .seq2seq_wrapper import Seq2SeqWrapper
 
 class S2SLSTMWrapper(Seq2SeqWrapper):

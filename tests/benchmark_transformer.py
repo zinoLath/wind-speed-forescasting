@@ -7,11 +7,7 @@ experiments can be tracked across cycles.
 """
 
 import argparse
-import ctypes
-import glob
 import json
-import os
-import site
 import sys
 import time
 from pathlib import Path
@@ -22,43 +18,20 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-os.environ.setdefault("TF_GPU_ALLOCATOR", "cuda_malloc_async")
-os.environ.setdefault("TF_CPP_MIN_LOG_LEVEL", "3")
+from src import common
 
-
-def configure_tensorflow_gpu_runtime():
-    """Configura as bibliotecas CUDA do ambiente antes de importar o TensorFlow."""
-    current_ld = os.environ.get("LD_LIBRARY_PATH", "")
-    candidate_dirs = []
-    for site_packages in site.getsitepackages():
-        candidate_dirs.extend(glob.glob(os.path.join(site_packages, "nvidia", "*", "lib")))
-    valid_dirs = [path for path in dict.fromkeys(candidate_dirs) if os.path.isdir(path)]
-    if not valid_dirs:
-        return []
-    os.environ["LD_LIBRARY_PATH"] = ":".join(valid_dirs + ([current_ld] if current_ld else []))
-    for library_name in (
-        "libcudart.so.12",
-        "libcublas.so.12",
-        "libcudnn.so.9",
-        "libcusolver.so.11",
-    ):
-        for library_dir in valid_dirs:
-            library_path = os.path.join(library_dir, library_name)
-            if os.path.exists(library_path):
-                try:
-                    ctypes.CDLL(library_path, mode=ctypes.RTLD_GLOBAL)
-                except OSError:
-                    pass
-                break
-    return valid_dirs
-
-
-cuda_lib_dirs = configure_tensorflow_gpu_runtime()
+tf = common.setup_tensorflow()
 
 from keras import backend as K  # noqa: E402
 from keras.callbacks import EarlyStopping, ReduceLROnPlateau  # noqa: E402
-from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score  # noqa: E402
 
+from src.common import (  # noqa: E402
+    FixedHyperParameters,
+    compute_metrics,
+    load_best_params,
+    load_dataset,
+    split_dataset,
+)
 from src.models.s2s_lstm_bi_wrapper import S2SLSTMBidirectionalWrapper  # noqa: E402
 from src.models.s2s_lstm_wrapper import S2SLSTMWrapper  # noqa: E402
 from src.models.s2s_tcn_bi_wrapper import S2STCNBidirectionalWrapper  # noqa: E402
@@ -66,10 +39,9 @@ from src.models.s2s_tcn_wrapper import S2STCNWrapper  # noqa: E402
 from src.models.s2s_transformer_autoreg_wrapper import S2STransformerAutoregressiveWrapper  # noqa: E402
 from src.models.s2s_transformer_preln_wrapper import S2STransformerPrelnWrapper  # noqa: E402
 from src.models.s2s_transformer_wrapper import S2STransformerWrapper  # noqa: E402
-from tests.optuna_all_hyperparameters import load_dataset, split_dataset  # noqa: E402
-from tests.wfo_optuna import FixedHyperParameters, load_best_params  # noqa: E402
 
 
+# Extends the common registry with the transformer variants benchmarked here.
 WRAPPERS = {
     "lstm": S2SLSTMWrapper,
     "lstm_bi": S2SLSTMBidirectionalWrapper,
@@ -84,13 +56,13 @@ WRAPPERS = {
 def build_wrapper(wrapper_key, dataset, params, input_steps, output_steps, epochs, batch_size,
                   use_schedule, decoder_mode, target_mode, seed, weight_decay=None, clipnorm=None,
                   loss="mse"):
-    train_df, val_df = split_dataset(dataset)
+    train_df, val_df, _ = split_dataset(dataset)
     train_end = len(train_df)
     val_end = train_end + len(val_df)
 
     K.clear_session()
-    import tensorflow as tf
     import random
+
     random.seed(seed)
     np.random.seed(seed)
     tf.random.set_seed(seed)
@@ -147,12 +119,8 @@ def evaluate_wfo(wrapper, dataset, test_start):
     predictions = predictions.ravel()
     actuals = actuals.ravel()
     metrics = {
-        "test_samples": len(actuals),
-        "mae": mean_absolute_error(actuals, predictions),
-        "mse": mean_squared_error(actuals, predictions),
-        "rmse": np.sqrt(mean_squared_error(actuals, predictions)),
-        "r2": r2_score(actuals, predictions),
         "prediction_time_sec": elapsed,
+        **compute_metrics(actuals, predictions),
     }
     return metrics, predictions, actuals
 
@@ -190,9 +158,9 @@ def main():
     if args.params:
         params = json.loads(args.params)
     else:
-        _, params = load_best_params(args.wrapper)
+        _, params = load_best_params(wrapper_name=WRAPPERS[args.wrapper]().name)
 
-    dataset = load_dataset()
+    dataset = load_dataset(PROJECT_ROOT / "data" / "dataset.csv")
     wrapper, train_end, val_end, history = build_wrapper(
         args.wrapper, dataset, params, args.input_steps, args.output_steps,
         args.epochs, args.batch_size, args.schedule, args.decoder_mode,
