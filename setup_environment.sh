@@ -17,20 +17,6 @@ source .venv/bin/activate
 
 echo "Instalando dependências..."
 
-# Criando requirements.txt se não existir
-if [ ! -f "requirements.txt" ]; then
-    cat > requirements.txt << EOF
-pandas==2.0.0
-numpy==1.24.3
-matplotlib==3.7.1
-scikit-learn==1.2.2
-tensorflow==2.15.0
-jupyter==1.0.0
-ipykernel==6.22.0
-EOF
-    echo "Arquivo requirements.txt criado."
-fi
-
 # Instalando as dependências
 pip install --upgrade pip
 pip install -r requirements.txt

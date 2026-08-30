@@ -13,92 +13,67 @@ The venv uses Python 3.10 specifically. TensorFlow 2.21 with CUDA is installed v
 ## Key Commands
 
 ```bash
-# Hyperparameter search (Optuna) — GPU required
-python tests/optuna_all_hyperparameters.py --n-trials 100 --epochs 60
-
-# Walk-forward evaluation using Optuna best params
-python tests/wfo_optuna.py
-
-# Walk-forward over individual periods (older scripts, run from project root)
-python tests/wfo_periods.py
-python tests/wfo_periods-fixed.py
-python tests/wfo_periods-xyz.py
-
-# GUI simulation (opens matplotlib window)
-./run_simulation.sh
-# NOTE: src/simulation.py does not exist — the script will fail until it is created.
-
-# Wavelet-based imputation for short gaps in wind_data.csv
-python src/impute_wind_data.py --input data/wind_data.csv --output data/wind_data_imputed.csv
-
-# Random Forest (row-wise) imputation for wind_data.csv
-python src/impute_wind_data_rf.py --input data/wind_data.csv --output data/wind_data_imputed_rf.csv --estimators 50 --max-iter 3 --train-sample 3000
-
-# Validate imputation by injecting artificial gaps and measuring error
-python tests/validate_impute_wind_data.py --n-samples 10 --gap-lengths 1 2 3 5 10
-
-# Per-row KNN imputation validation
-python tests/validate_knn_impute.py --n-samples 10 --gap-lengths 1 2 3 5 10
-
-# Per-row Random Forest imputation validation
-python tests/validate_rf_impute.py --n-samples 10 --gap-lengths 1 2 3 5 10
-
-# Per-row LightGBM imputation validation
-python tests/validate_lgbm_impute.py --n-samples 10 --gap-lengths 1 2 3 5 10
-
-# Linear interpolation + Kalman filter (column-wise) imputation validation
-python tests/validate_kalman_impute.py --n-samples 10 --gap-lengths 1 2 3 5 10 20 36
-
-# Side-by-side comparison of KNN vs Random Forest vs LightGBM vs Kalman on the same injected gaps
-python tests/compare_imputers.py --n-samples 10 --gap-lengths 1 2 3 5 10 20 36
-
-# Detailed statistical evaluation of Random Forest imputation (CSV + plots)
-python tests/validate_rf_impute_detailed.py --n-samples 30 --gap-lengths 1 2 3 5 10 20 36
-
-# Walk-forward validation on imputed data, retraining at each window
-python tests/wfo_imputed.py --models lstm lstm_bi tcn tcn_bi --train-window-days 30 --test-window-days 7 --step-days 7
-
 # Pipeline in stages (optuna -> train -> evaluate -> impute -> walkforward)
 python pipeline/pipeline.py                  # full pipeline
 python pipeline/pipeline.py --stage train evaluate   # only some stages
 python pipeline/step_train.py                # run a single stage standalone
-# All pipeline stages accept --config pipeline/pipeline.json (overrides
+# All pipeline stages accept --config <file> (merged over
 # pipeline/pipeline.default.json). See pipeline/README.md.
+
+# Regression smoke tests (standalone scripts, no pytest)
+python tests/test_wrappers_build.py              # build+predict every wrapper
+python tests/test_create_sequences_equivalence.py  # vectorised vs loop oracle
+
+# A/B experiment: raw (ws100) vs wavelet-denoised target
+python tests/ab_raw_vs_wavelet.py --epochs 15
+
+# Fair fixed-budget benchmark of wrappers (appends to data/results/benchmark_transformer.jsonl)
+python tests/benchmark_transformer.py --wrapper lstm_bi --epochs 40
+
+# Legacy Optuna driver (kept for reference; pipeline/step_optuna.py is primary)
+python tests/optuna_all_hyperparameters.py --n-trials 100 --epochs 60
+
+# Optuna-tuned focused-column imputer cache (data/imputation_optuna/best_model.json)
+python tests/compare_rf_lgbm_impute_detailed.py --optuna
+
+# Regenerate complete-period slices (data/series_list/)
+python src/periods.py --min-length 108
 ```
 
 There are no linter, formatter, type-checker, or test runner commands configured. No CI workflows exist.
+For linting during development, `pyflakes` and `radon` are useful but are not in requirements.txt.
 
 ## Architecture
 
-Seq2Seq wind speed forecasting models (Keras/TensorFlow). All models inherit from `Seq2SeqWrapper` (`src/models/seq2seq_wrapper.py`), which provides `prepare()`, `build()`, `fit()`, `predict()`, and `rolling_forecast()`.
+Seq2Seq wind speed forecasting models (Keras/TensorFlow). All models inherit from `Seq2SeqWrapper` (`src/models/seq2seq_wrapper.py`), which provides `prepare()`, `build()`, `fit()`, `predict()`, and a batched `rolling_forecast()` (windows are plain functions of known history; a single `model.predict` call).
 
-Model variants in `src/models/`:
-- `S2SLSTMWrapper` — unidirectional LSTM encoder + attention
-- `S2SLSTMBidirectionalWrapper` — bidirectional LSTM encoder + attention
-- `S2STCNWrapper` — TCN encoder + attention
-- `S2STCNBidirectionalWrapper` — bidirectional TCN encoder + attention
-- `S2SLSTMBidirectionalWrapperAttentionExtract` — variant that also extracts attention scores
+Model registry lives in `src/common.py:WRAPPERS` with lazy imports; keys: `lstm`, `lstm_bi`, `tcn`, `tcn_bi`, `tcn_lstm`, `transformer` (Pre-LN). `validate_wrapper_names()` fails fast on duplicate `.name` values (names double as results-directory names).
 
-All wrappers use Teacher Forcing. The decoder always receives 1 feature (the target column).
+- Training loss is configurable per wrapper (`wrapper.loss`; pipeline `loss` config key), default **MSE**.
+- Validation decoder inputs use the inference convention (last observed target repeated), so val_loss/early stopping and the Optuna objective (validation RMSE) measure deployment behaviour.
+- Headline metrics compare against the RAW `ws100`; denoised-actual metrics are kept as `*_denoised` secondary columns.
+- TCN search space is shared: `src/models/tcn_hp.py:tcn_hyperparameters()`.
+- `src/common.py` is the single source of truth for GPU setup, dataset loading/splitting, hp adapters (`FixedHyperParameters`, `OptunaHyperParameters`), metrics and batched prediction (`predict_all_horizons`). Pipeline stages import it; keep new shared logic there.
 
 Wavelet denoising utility: `src/utils.py:wavelet_denoising()` — uses `sym18` wavelet, default level 2.
 
+Imputation package `src/impute/`: `rf.py`, `lightgbm.py`, `knn.py`, `kalman.py` plus `base.py` (loaders, direction sin/cos handling, gap-injection validation, metrics, plots). Registered in `pipeline/step_impute.py:METHODS`.
+
 ## Data
 
-- Raw data: `data/dataset.csv` (gitignored, not in repo)
-- Period CSVs: `data/series_list/complete_period_*.csv`
-- Period summary: `data/complete_periods_summary.json`
-- Results written to: `data/results/optuna/<WrapperName>/` and `data/results/wfo_optuna/<WrapperName>/`
+- Inputs: `data/dataset.csv` (forecast series) and `data/wind_data.csv` (long series for imputation/walk-forward) — gitignored
+- Pipeline outputs: `pipeline/tmp/` (overwritten each run) and `data/impute/<method>/`
+- Results: `data/results/{optuna,wfo_optuna,benchmark*}/`
+- Archived/orphaned artifacts: `data/archive/` (do not consume)
+- Complete-period slices: `data/series_list/` regenerated by `src/periods.py`
 
 `tests/` files are **not** pytest/unittest — they are standalone scripts meant to be run directly with `python`.
 
 ## Important Gotchas
 
-- **`tests/wfo_periods*.py` must be run from the project root.** They use relative paths like `../data/` and `Path.cwd().resolve().parent`.
-- **`tests/optuna_all_hyperparameters.py`** is the primary entry point for model training. It manages `sys.path` and GPU runtime setup internally.
-- **CUDA library loading** is duplicated across scripts (`configure_tensorflow_gpu_runtime`). If you modify GPU setup, update all copies in `tests/wfo_periods*.py` and `tests/optuna_all_hyperparameters.py`.
-- The `build()` method returns `NotImplementedError` (as an expression, not raised) in `Seq2SeqWrapper` — subclasses must override it.
-- Data files (`*.csv`, `*.h5`, `*.keras`) are gitignored. The models directory is also gitignored.
-- The `OLD/` directory contains archived code; ignore it.
-- **`src/simulation.py` is referenced by `run_simulation.sh` and README but does not exist.**
-- `FixedHyperParameters._get()` in `tests/wfo_optuna.py:33` was fixed: it now raises `KeyError` only when the param is **missing**.
+- **`src/common.py` must stay import-side-effect free**: TensorFlow is configured via `common.setup_tensorflow()` before model imports (lazy in stages). Do not add module-level keras/tf imports there.
+- **`pipeline/` package vs `pipeline/pipeline.py` module**: every file under `pipeline/` inserts the project root at `sys.path[0]` before `from pipeline import ...` imports — otherwise `pipeline/pipeline.py` shadows the package. Keep the bootstrap block when adding stage files.
+- **Optuna studies are persisted to sqlite** (`pipeline/tmp/optuna/<name>/optuna.db`) and resume with `load_if_exists=True`; delete the `.db` to restart a search from scratch.
+- Data files (`/data/**/*.csv`, `*.h5`, `*.keras`) are gitignored; `/models/`, `/OLD/`, `/images/` are gitignored but some files inside are tracked.
+- The `OLD/` directory contains retired code (kept, not maintained): archived test scripts in `OLD/tests/` (see its README for replacements), retired wrappers in `OLD/models/`, legacy notebooks in `OLD/notebooks/`, `run_simulation.sh` (its `src/simulation.py` never existed).
+- Historical metrics in older docs/commits (e.g. MAE 0.1589) came from an older dataset and a rolling protocol that leaked future rows; current honest numbers are documented in `docs/`.

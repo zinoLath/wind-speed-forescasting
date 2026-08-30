@@ -62,7 +62,7 @@ venv.bak/
 # Models and large data files
 *.h5
 *.h5.keras
-*.csv
+/data/**/*.csv
 *.xlsx
 
 # Spyder project settings
@@ -99,6 +99,5 @@ dmypy.json
 /models/
 /OLD/
 /images/
-/scripts/
 # Pipeline temporary outputs (overwritten on every run)
 /pipeline/tmp/

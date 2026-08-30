@@ -33,7 +33,9 @@ src/impute/
 ├── __init__.py
 ├── base.py                 # helpers comuns (dados, direções circulares, gaps, métricas, gráficos)
 ├── rf.py                   # imputação com Random Forest (IterativeImputer)
-└── lightgbm.py             # imputação com LightGBM (IterativeImputer)
+├── lightgbm.py             # imputação com LightGBM (IterativeImputer)
+├── knn.py                  # imputação com KNNImputer
+└── kalman.py               # imputação coluna-a-coluna (interpolação + Kalman)
 ```
 
 ## Configuração
