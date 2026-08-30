@@ -30,7 +30,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from tests.validate_impute_wind_data import find_complete_segments, load_wind_data
+from src.impute.base import find_complete_segments, load_wind_data
 from src.imputation_model_utils import (
     DIRECTION_COLUMNS,
     MODEL_NAMES,
