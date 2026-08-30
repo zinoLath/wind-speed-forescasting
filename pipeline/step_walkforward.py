@@ -19,6 +19,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
+import numpy as np
 import pandas as pd
 
 from src import common
@@ -61,8 +62,12 @@ def resolve_input_path(config, cfg):
     return common.resolve(config["paths"]["dataset_csv"])
 
 
-def _train_and_predict(wrapper, train_df, eval_df, cfg, hyperparameters):
+def _train_and_predict(wrapper, train_df, eval_df, cfg, hyperparameters, imputed_flags=None):
     """Train on *train_df* (split internally into train/val) and predict *eval_df*.
+
+    When *imputed_flags* is given (a boolean Series indexed like the input
+    dataset), the predictions gain ``input_imputed``/``output_imputed`` flag
+    columns and the metrics gain observed-only values.
 
     Returns (predictions_df, window_metrics_dict).
     """
@@ -126,11 +131,29 @@ def _train_and_predict(wrapper, train_df, eval_df, cfg, hyperparameters):
     denoised = common.compute_metrics(predictions["actual"], predictions["predicted"])
     metrics["mae_denoised"] = denoised["mae"]
     metrics["rmse_denoised"] = denoised["rmse"]
+
+    if imputed_flags is not None:
+        output_imputed = imputed_flags.reindex(predictions["timestamp"]).to_numpy(dtype=bool)
+        window_flags = imputed_flags.reindex(eval_window.index).to_numpy(dtype=bool)
+        n_sequences = len(predictions) // cfg["output_steps"]
+        input_imputed = np.array([
+            window_flags[i:i + cfg["input_steps"]].any() for i in range(n_sequences)
+        ])
+        predictions["input_imputed"] = np.repeat(input_imputed, cfg["output_steps"])
+        predictions["output_imputed"] = output_imputed
+        observed = ~output_imputed
+        if observed.any():
+            observed_metrics = common.compute_metrics(
+                predictions.loc[observed, actual_col], predictions.loc[observed, "predicted"]
+            )
+            metrics["mae_observed"] = observed_metrics["mae"]
+            metrics["rmse_observed"] = observed_metrics["rmse"]
+
     metrics["train_epochs"] = len(history.history.get("loss", []))
     return predictions, metrics
 
 
-def _evaluate_wrapper(wrapper_key, df, cfg, config, out_dir):
+def _evaluate_wrapper(wrapper_key, df, cfg, config, out_dir, imputed_flags=None):
     """Run the full walk-forward for one model and save per-window artifacts.
 
     Returns an artifacts dict, or ``{"no_windows": True}`` when the dataset is
@@ -174,7 +197,9 @@ def _evaluate_wrapper(wrapper_key, df, cfg, config, out_dir):
 
         started_at = time.perf_counter()
         wrapper = wrapper_class()
-        pred_df, metrics = _train_and_predict(wrapper, train_df, test_df, cfg, hyperparameters)
+        pred_df, metrics = _train_and_predict(
+            wrapper, train_df, test_df, cfg, hyperparameters, imputed_flags
+        )
         elapsed = time.perf_counter() - started_at
 
         metrics.update(
@@ -262,10 +287,13 @@ def run(config):
     print(f"Input dataset: {input_path}")
     df = load_input_frame(input_path)
 
+    imputed_flags = df["imputed"] if "imputed" in df.columns else None
     metadata_columns = [c for c in ("imputed", "_target_imputed") if c in df.columns]
     if metadata_columns:
         df = df.drop(columns=metadata_columns)
     print(f"Dataset shape: {df.shape} | range {df.index.min()} -> {df.index.max()}")
+    if imputed_flags is not None:
+        print(f"Rows with imputed values: {int(imputed_flags.sum())}")
     if cfg.get("seed") is not None:
         tf.keras.utils.set_random_seed(cfg["seed"])
 
@@ -278,7 +306,9 @@ def run(config):
     warnings = []
     for wrapper_key in cfg["wrappers"]:
         print(f"\n=== Walk-forward: {wrapper_key} ===")
-        results[wrapper_key] = _evaluate_wrapper(wrapper_key, df, cfg, config, out_dir)
+        results[wrapper_key] = _evaluate_wrapper(
+            wrapper_key, df, cfg, config, out_dir, imputed_flags
+        )
         if results[wrapper_key].get("no_windows"):
             warnings.append(
                 f"{wrapper_key}: no walk-forward windows generated "

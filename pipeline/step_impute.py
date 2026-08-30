@@ -25,7 +25,12 @@ STAGE = "impute"
 METHODS = {
     "random_forest": "src.impute.rf",
     "lightgbm": "src.impute.lightgbm",
+    "knn": "src.impute.knn",
+    "kalman": "src.impute.kalman",
 }
+
+# Imputers that fit on a train sample (they accept the train_sample kwarg).
+SAMPLED_METHODS = {"random_forest", "lightgbm"}
 
 
 def run(config):
@@ -64,7 +69,8 @@ def run(config):
         validation_kwargs = dict(imputer_kwargs)
         # The imputation params take precedence so the reported validation
         # error corresponds to the dataset actually produced above.
-        validation_kwargs.setdefault("train_sample", validation["train_sample"])
+        if method in SAMPLED_METHODS:
+            validation_kwargs.setdefault("train_sample", validation["train_sample"])
         detailed, summary, overall, settings = base.validate(
             module.impute_dataframe,
             method,
