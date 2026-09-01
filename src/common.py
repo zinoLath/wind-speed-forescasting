@@ -11,6 +11,7 @@ import glob
 import importlib
 import json
 import os
+import re
 import site
 import sys
 from pathlib import Path
@@ -32,6 +33,63 @@ def resolve(path):
     """Resolve a config path; relative paths are relative to the project root."""
     path = Path(path)
     return path if path.is_absolute() else PROJECT_ROOT / path
+
+
+# --- Canonical feature naming standard --------------------------------------
+# Every stored or derived feature uses one short lowercase pattern:
+#   ws{h}      wind speed at height h (m/s)            canonical, kept
+#   v{h}       vertical wind component at height h     canonical, kept
+#   dir{h}     wind direction at height h (degrees)    canonical, kept
+#   disp{h}    wind-speed dispersion at height h       dropped by load_dataset
+#   vdisp{h}   vertical dispersion at height h         dropped by load_dataset
+# Derived columns append suffixes: ws{h}_wavelet, dir{h}_sin, dir{h}_cos,
+# hour_sin, hour_cos, doy_sin, doy_cos. Raw instrument files may carry legacy
+# aliases (wdir{h}, verts{h}, wdisp{h}, vertdisp{h}); canonicalize_columns
+# maps them to the standard so consumers never see two names for one feature.
+CANONICAL_HEIGHTS = (40, 50, 60, 70, 80, 90, 100, 110, 120, 130, 140)
+RAW_HEIGHTS = CANONICAL_HEIGHTS + (150, 160, 170, 180, 190, 200, 220, 240, 260)
+COLUMN_ALIASES = {
+    f"{legacy}{height}": f"{canonical}{height}"
+    for height in RAW_HEIGHTS
+    for legacy, canonical in (
+        ("wdir", "dir"),
+        ("verts", "v"),
+        ("wdisp", "disp"),
+        ("vertdisp", "vdisp"),
+    )
+}
+# Non-feature columns of the forecast dataset (metadata/instrument columns).
+METADATA_COLUMNS = ("year", "month", "day", "hour", "minute", "id", "press", "humid", "temp")
+
+
+def canonicalize_columns(df):
+    """Rename legacy feature columns to the canonical standard (in place).
+
+    Unknown columns are left untouched, so the function is safe to apply to
+    any DataFrame (forecast dataset, wind data, imputed outputs).
+    """
+    return df.rename(columns={col: COLUMN_ALIASES[col] for col in df.columns if col in COLUMN_ALIASES})
+
+
+def forecast_redundant_columns(columns):
+    """Columns of the forecast dataset that never feed the models.
+
+    Covers metadata columns, the shear indicators (``cis*``), the dispersion
+    families and every ws/v/dir column outside the canonical heights.
+    """
+    drop = set(METADATA_COLUMNS)
+    for col in columns:
+        name = str(col)
+        if name.startswith("cis"):
+            drop.add(name)
+            continue
+        match = re.match(r"^(ws|v|dir|disp|vdisp)(\d+)$", name)
+        if not match:
+            continue
+        prefix, height = match.group(1), int(match.group(2))
+        if prefix in ("disp", "vdisp") or height not in CANONICAL_HEIGHTS:
+            drop.add(name)
+    return drop
 
 
 def configure_tensorflow_gpu_runtime():
@@ -93,6 +151,9 @@ def setup_tensorflow(gpu_enabled=True):
 WRAPPERS = {
     "lstm": ("src.models.s2s_lstm_wrapper", "S2SLSTMWrapper"),
     "lstm_bi": ("src.models.s2s_lstm_bi_wrapper", "S2SLSTMBidirectionalWrapper"),
+    "gru": ("src.models.s2s_gru_wrapper", "S2SGRUWrapper"),
+    "gru_bi": ("src.models.s2s_gru_bi_wrapper", "S2SGRUBidirectionalWrapper"),
+    "lstm_cnn": ("src.models.s2s_lstm_cnn_wrapper", "S2SLSTMCNNWrapper"),
     "tcn": ("src.models.s2s_tcn_wrapper", "S2STCNWrapper"),
     "tcn_bi": ("src.models.s2s_tcn_bi_wrapper", "S2STCNBidirectionalWrapper"),
     "tcn_lstm": ("src.models.s2s_tcn_lstm_wrapper", "S2STCNLSTMWrapper"),
@@ -120,28 +181,35 @@ def validate_wrapper_names():
 
 
 class FixedHyperParameters:
-    """Adapter that feeds a fixed dict of hyperparameters into a wrapper.build()."""
+    """Adapter that feeds a fixed dict of hyperparameters into a wrapper.build().
+
+    Names missing from the dict fall back to the ``default`` declared by the
+    wrapper, so hyperparameter dicts saved by older Optuna searches stay
+    compatible when the search space grows.
+    """
 
     def __init__(self, values):
         self.values = dict(values)
 
-    def _get(self, name):
+    def _get(self, name, default=None):
         if name == "encoder_filters" and "filters_power" in self.values:
             return 2 ** int(self.values["filters_power"])
         if name == "decoder_filters" and name not in self.values:
             return self._get("encoder_filters")
         if name not in self.values:
+            if default is not None:
+                return default
             raise KeyError(f"Hyperparameter '{name}' is missing.")
         return self.values[name]
 
     def Float(self, name, min_value, max_value, step=None, sampling=None, default=None):
-        return float(self._get(name))
+        return float(self._get(name, default))
 
     def Int(self, name, min_value, max_value, step=1, default=None):
-        return int(self._get(name))
+        return int(self._get(name, default))
 
     def Choice(self, name, values, default=None):
-        return self._get(name)
+        return self._get(name, default)
 
 
 class OptunaHyperParameters:
@@ -160,6 +228,30 @@ class OptunaHyperParameters:
 
     def Choice(self, name, values, default=None):
         return self.trial.suggest_categorical(name, values)
+
+
+def default_callbacks(wrapper, patience, min_lr=1e-6):
+    """Standard training callbacks for a prepared/built wrapper.
+
+    ``EarlyStopping`` always monitors ``val_loss``. ``ReduceLROnPlateau`` is
+    only attached when the wrapper chose a constant LR: with a
+    ``warmup_cosine`` schedule the annealing is already handled, and Keras 3
+    makes the LR of a schedule-based optimizer read-only, so the plateau
+    callback would raise ``TypeError`` on the first plateau.
+    """
+    from keras.callbacks import EarlyStopping, ReduceLROnPlateau
+
+    callbacks = [
+        EarlyStopping(monitor="val_loss", patience=patience, restore_best_weights=True),
+    ]
+    if getattr(wrapper, "lr_schedule_mode", "constant") != "warmup_cosine":
+        callbacks.append(
+            ReduceLROnPlateau(
+                monitor="val_loss", factor=0.5, patience=max(2, patience // 2),
+                min_lr=min_lr,
+            )
+        )
+    return callbacks
 
 
 def optuna_pruning_callback(trial):
@@ -187,19 +279,60 @@ def optuna_pruning_callback(trial):
     return _PruningCallback(trial)
 
 
-# Hyperparameters used when no Optuna result is available.
+# Hyperparameters used when no Optuna result is available. ``loss``,
+# ``lr_schedule`` and ``weight_decay`` mirror the searchable keys added to
+# every wrapper; older best_trial.json files without them fall back to these
+# values through FixedHyperParameters.
 DEFAULT_HYPERPARAMETERS = {
     "lstm": {
         "learning_rate": 0.001249176597990083,
         "lstm_units": 256,
         "encoder_dropout_rate": 0.1,
         "decoder_dropout_rate": 0.1,
+        "loss": "mse",
+        "lr_schedule": "constant",
+        "weight_decay": 0.0,
     },
     "lstm_bi": {
         "learning_rate": 0.006403023029268099,
         "lstm_units": 64,
         "encoder_dropout_rate": 0.05,
         "decoder_dropout_rate": 0.15,
+        "loss": "mse",
+        "lr_schedule": "constant",
+        "weight_decay": 0.0,
+    },
+    "gru": {
+        "learning_rate": 0.001249176597990083,
+        "gru_units": 256,
+        "encoder_dropout_rate": 0.1,
+        "decoder_dropout_rate": 0.1,
+        "loss": "mse",
+        "lr_schedule": "constant",
+        "weight_decay": 0.0,
+    },
+    "gru_bi": {
+        "learning_rate": 0.006403023029268099,
+        "gru_units": 64,
+        "encoder_dropout_rate": 0.05,
+        "decoder_dropout_rate": 0.15,
+        "loss": "mse",
+        "lr_schedule": "constant",
+        "weight_decay": 0.0,
+    },
+    "lstm_cnn": {
+        "learning_rate": 0.001,
+        "encoder_layers": 1,
+        "lstm_units": 128,
+        "encoder_dropout_rate": 0.1,
+        "decoder_filters": 48,
+        "decoder_kernel_size": 2,
+        "decoder_nb_stacks": 1,
+        "decoder_dropout_rate": 0.1,
+        "decoder_dilation_rate": 4,
+        "loss": "mse",
+        "lr_schedule": "constant",
+        "weight_decay": 0.0,
     },
     "tcn": {
         "learning_rate": 0.001249176597990083,
@@ -212,6 +345,9 @@ DEFAULT_HYPERPARAMETERS = {
         "decoder_nb_stacks": 2,
         "decoder_dropout_rate": 0.1,
         "decoder_dilation_rate": 4,
+        "loss": "mse",
+        "lr_schedule": "constant",
+        "weight_decay": 0.0,
     },
     "tcn_bi": {
         "learning_rate": 0.003969484893321028,
@@ -225,6 +361,9 @@ DEFAULT_HYPERPARAMETERS = {
         "decoder_nb_stacks": 2,
         "decoder_dropout_rate": 0.0,
         "decoder_dilation_rate": 1,
+        "loss": "mse",
+        "lr_schedule": "constant",
+        "weight_decay": 0.0,
     },
     "tcn_lstm": {
         "learning_rate": 0.001,
@@ -235,6 +374,9 @@ DEFAULT_HYPERPARAMETERS = {
         "encoder_dilation_rate": 4,
         "lstm_units": 128,
         "decoder_dropout_rate": 0.1,
+        "loss": "mse",
+        "lr_schedule": "constant",
+        "weight_decay": 0.0,
     },
     "transformer": {
         "learning_rate": 0.0006,
@@ -243,8 +385,49 @@ DEFAULT_HYPERPARAMETERS = {
         "num_layers": 3,
         "ff_dim": 256,
         "dropout_rate": 0.1,
+        "loss": "mse",
+        "lr_schedule": "warmup_cosine",
+        "weight_decay": 0.0,
     },
 }
+
+
+def add_cyclic_features(dataset):
+    """Add calendar and wind-direction cyclic features, in place.
+
+    - ``hour_sin``/``hour_cos``: position within the day (period 24 h);
+    - ``doy_sin``/``doy_cos``: position within the year (period 365 days);
+    - ``dir{h}_sin``/``dir{h}_cos``: wind direction at height *h* encoded on
+      the unit circle (raw degree columns are dropped, removing the 359°→1°
+      discontinuity).
+
+    Requires a DatetimeIndex. Safe to call more than once.
+    """
+    if not isinstance(dataset.index, pd.DatetimeIndex):
+        return dataset
+
+    if "hour_sin" not in dataset.columns:
+        minutes_of_day = dataset.index.hour * 60 + dataset.index.minute
+        hour_angle = 2 * np.pi * minutes_of_day / (24 * 60)
+        dataset["hour_sin"] = np.sin(hour_angle)
+        dataset["hour_cos"] = np.cos(hour_angle)
+
+    if "doy_sin" not in dataset.columns:
+        year_angle = 2 * np.pi * (dataset.index.dayofyear - 1) / 365.0
+        dataset["doy_sin"] = np.sin(year_angle)
+        dataset["doy_cos"] = np.cos(year_angle)
+
+    direction_columns = [
+        col for col in dataset.columns
+        if col.startswith("dir") and col[3:].isdigit() and not col.endswith(("_sin", "_cos"))
+    ]
+    for col in direction_columns:
+        radians = np.deg2rad(pd.to_numeric(dataset[col], errors="coerce"))
+        dataset[f"{col}_sin"] = np.sin(radians)
+        dataset[f"{col}_cos"] = np.cos(radians)
+    if direction_columns:
+        dataset = dataset.drop(columns=direction_columns)
+    return dataset
 
 
 def load_dataset(path):
@@ -268,35 +451,13 @@ def load_dataset(path):
     dataset["timestamp"] = pd.to_datetime(dataset["id"], format="mixed")
     dataset = dataset.sort_values("timestamp").set_index("timestamp")
 
-    redundant_columns = [
-        "year", "month", "day", "hour", "minute", "press", "humid", "temp", "id",
-        "cis1", "cis2", "cis3", "cis4", "cis5", "cis6", "cis7", "cis8", "cis9",
-        "cis10", "cis11", "cis12", "cis13", "cis14", "cis15", "cis16", "cis17",
-        "cis18", "cis19",
-        "wdisp40", "wdisp50", "wdisp60", "wdisp70", "wdisp80", "wdisp90",
-        "wdisp100", "wdisp110", "wdisp120", "wdisp130", "wdisp140", "wdisp150",
-        "wdisp160", "wdisp170", "wdisp180", "wdisp190", "wdisp200", "wdisp220",
-        "wdisp240", "wdisp260",
-        "vertdisp40", "vertdisp50", "vertdisp60", "vertdisp70", "vertdisp80",
-        "vertdisp90", "vertdisp100", "vertdisp110", "vertdisp120", "vertdisp130",
-        "vertdisp140", "vertdisp150", "vertdisp160", "vertdisp170", "vertdisp180",
-        "vertdisp190", "vertdisp200", "vertdisp220", "vertdisp240", "vertdisp260",
-        "wdir150", "wdir160", "wdir170", "wdir180", "wdir190", "wdir200",
-        "wdir220", "wdir240", "wdir260",
-        "verts150", "verts160", "verts170", "verts180", "verts190", "verts200",
-        "verts220", "verts240", "verts260",
-        "ws150", "ws160", "ws170", "ws180", "ws190", "ws200", "ws220", "ws240",
-        "ws260",
-    ]
+    dataset = canonicalize_columns(dataset)
+    redundant = forecast_redundant_columns(dataset.columns)
     dataset = dataset.drop(
-        columns=[c for c in redundant_columns if c in dataset.columns], errors="ignore"
+        columns=[c for c in redundant if c in dataset.columns], errors="ignore"
     )
 
-    heights = [40, 50, 60, 70, 80, 90, 100, 110, 120, 130, 140]
-    rename = {f"wdir{h}": f"dir{h}" for h in heights}
-    rename.update({f"verts{h}": f"v{h}" for h in heights})
-    dataset = dataset.rename(columns=rename)
-
+    dataset = add_cyclic_features(dataset)
     dataset = dataset.apply(pd.to_numeric, errors="coerce")
     dataset = dataset.interpolate(limit_direction="both").ffill().bfill()
     return dataset

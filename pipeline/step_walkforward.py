@@ -42,9 +42,10 @@ def load_input_frame(path):
         return common.load_dataset(path)
 
     df = pd.read_csv(path)
+    df = common.canonicalize_columns(df)
     df["timestamp"] = pd.to_datetime(df["timestamp"])
     df = df.sort_values("timestamp").set_index("timestamp")
-    return df
+    return common.add_cyclic_features(df)
 
 
 def resolve_input_path(config, cfg):
@@ -72,7 +73,6 @@ def _train_and_predict(wrapper, train_df, eval_df, cfg, hyperparameters, imputed
     Returns (predictions_df, window_metrics_dict).
     """
     from keras import backend as K
-    from keras.callbacks import EarlyStopping, ReduceLROnPlateau
 
     train_split = int(len(train_df) * cfg.get("train_val_ratio", 0.8))
     train_part = train_df.iloc[:train_split].copy()
@@ -87,26 +87,20 @@ def _train_and_predict(wrapper, train_df, eval_df, cfg, hyperparameters, imputed
         target_col=cfg["target_col"],
         denoise=cfg["denoise"],
         denoise_level=cfg["denoise_level"],
+        persistence_gate=cfg.get("persistence_gate", False),
     )
+    batch_size = int(hyperparameters.get("batch_size", cfg["batch_size"]))
     if hasattr(wrapper, "schedule_total_steps"):
-        steps_per_epoch = int((len(train_part) + cfg["batch_size"] - 1) // cfg["batch_size"])
+        steps_per_epoch = int((len(train_part) + batch_size - 1) // batch_size)
         wrapper.schedule_total_steps = steps_per_epoch * cfg["epochs"]
     wrapper.loss = cfg.get("loss", "mse")
 
     wrapper.build(common.FixedHyperParameters(hyperparameters))
     history = wrapper.fit(
         epochs=cfg["epochs"],
-        batch_size=cfg["batch_size"],
+        batch_size=batch_size,
         verbose=cfg.get("verbose", 0),
-        callbacks=[
-            EarlyStopping(
-                monitor="val_loss", patience=cfg["patience"], restore_best_weights=True
-            ),
-            ReduceLROnPlateau(
-                monitor="val_loss", factor=0.5, patience=max(2, cfg["patience"] // 2),
-                min_lr=1e-6,
-            ),
-        ],
+        callbacks=common.default_callbacks(wrapper, cfg["patience"]),
         use_validation=True,
     )
 
@@ -257,6 +251,7 @@ def _evaluate_wrapper(wrapper_key, df, cfg, config, out_dir, imputed_flags=None)
             "output_steps": cfg["output_steps"],
             "target_col": cfg["target_col"],
             "denoise_level": cfg["denoise_level"],
+            "persistence_gate": cfg.get("persistence_gate", False),
             "epochs": cfg["epochs"],
             "batch_size": cfg["batch_size"],
             "patience": cfg["patience"],

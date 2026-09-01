@@ -55,7 +55,7 @@ WRAPPERS = {
 
 def build_wrapper(wrapper_key, dataset, params, input_steps, output_steps, epochs, batch_size,
                   use_schedule, decoder_mode, target_mode, seed, weight_decay=None, clipnorm=None,
-                  loss="mse"):
+                  loss="mse", persistence_gate=False):
     train_df, val_df, _ = split_dataset(dataset)
     train_end = len(train_df)
     val_end = train_end + len(val_df)
@@ -66,6 +66,14 @@ def build_wrapper(wrapper_key, dataset, params, input_steps, output_steps, epoch
     random.seed(seed)
     np.random.seed(seed)
     tf.random.set_seed(seed)
+
+    # Inject the CLI-driven choices into the hyperparameter dict so build()
+    # compiles exactly what was requested on the command line.
+    params = dict(params)
+    params["loss"] = loss
+    params["lr_schedule"] = "warmup_cosine" if use_schedule else "constant"
+    if weight_decay:
+        params["weight_decay"] = weight_decay
 
     wrapper = WRAPPERS[wrapper_key]()
     wrapper.prepare(
@@ -78,6 +86,7 @@ def build_wrapper(wrapper_key, dataset, params, input_steps, output_steps, epoch
         denoise_level=2,
         decoder_mode=decoder_mode,
         target_mode=target_mode,
+        persistence_gate=persistence_gate,
     )
     if use_schedule and hasattr(wrapper, "schedule_total_steps"):
         n_train = len(train_df)
@@ -147,6 +156,8 @@ def parse_args():
     parser.add_argument("--clipnorm", type=float, default=None, help="Global gradient norm clipping.")
     parser.add_argument("--loss", choices=["mse", "mae", "huber"], default="mse",
                         help="Training loss; MSE punishes large errors harder.")
+    parser.add_argument("--persistence-gate", action="store_true",
+                        help="Enable the learned per-horizon persistence gate on the output.")
     return parser.parse_args()
 
 
@@ -165,6 +176,7 @@ def main():
         args.wrapper, dataset, params, args.input_steps, args.output_steps,
         args.epochs, args.batch_size, args.schedule, args.decoder_mode,
         args.target_mode, args.seed, args.weight_decay, args.clipnorm, args.loss,
+        args.persistence_gate,
     )
 
     best_val_loss = float(np.min(history.history["val_loss"]))
@@ -180,6 +192,7 @@ def main():
         "schedule": args.schedule,
         "decoder_mode": args.decoder_mode,
         "target_mode": args.target_mode,
+        "persistence_gate": args.persistence_gate,
         "seed": args.seed,
         "loss": args.loss,
         "weight_decay": args.weight_decay,

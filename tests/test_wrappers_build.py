@@ -31,17 +31,20 @@ def main():
         index=index,
     )
 
-    for key in common.WRAPPERS:
-        wrapper = common.wrapper_factory(key)()
-        wrapper.prepare(
-            df.iloc[:320], df.iloc[320:],
-            input_steps=24, output_steps=12, target_col="ws100_wavelet",
-        )
-        model = wrapper.build(common.FixedHyperParameters(common.DEFAULT_HYPERPARAMETERS[key]))
-        params = model.count_params()
-        pred = wrapper.predict(df.iloc[320:320 + 24])
-        assert pred.shape == (12,), f"{key}: unexpected prediction shape {pred.shape}"
-        print(f"OK {key:<12} {wrapper.name:<28} params={params:>9,} predict={pred.round(2)}")
+    for gate in (False, True):
+        for key in common.WRAPPERS:
+            wrapper = common.wrapper_factory(key)()
+            wrapper.prepare(
+                df.iloc[:320], df.iloc[320:],
+                input_steps=24, output_steps=12, target_col="ws100_wavelet",
+                persistence_gate=gate,
+            )
+            model = wrapper.build(common.FixedHyperParameters(common.DEFAULT_HYPERPARAMETERS[key]))
+            params = model.count_params()
+            pred = wrapper.predict(df.iloc[320:320 + 24])
+            assert pred.shape == (12,), f"{key}: unexpected prediction shape {pred.shape}"
+            label = f"{key} gate={'on' if gate else 'off'}"
+            print(f"OK {label:<22} {wrapper.name:<28} params={params:>9,} predict={pred.round(2)}")
 
     print("all wrappers build: PASS")
 

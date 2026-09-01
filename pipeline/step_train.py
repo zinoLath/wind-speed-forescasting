@@ -29,7 +29,6 @@ def run(config):
     print(f"TensorFlow {tf.__version__} | GPUs: {tf.config.list_physical_devices('GPU')}")
 
     from keras import backend as K
-    from keras.callbacks import EarlyStopping, ReduceLROnPlateau
 
     cfg = config[STAGE]
     wrapper_key = cfg["wrapper"]
@@ -58,27 +57,22 @@ def run(config):
         target_col=cfg["target_col"],
         denoise=cfg["denoise"],
         denoise_level=cfg["denoise_level"],
+        persistence_gate=cfg.get("persistence_gate", False),
     )
+    # The Optuna search can pick a batch size; explicit config wins otherwise.
+    batch_size = int(hyperparameters.get("batch_size", cfg["batch_size"]))
     if hasattr(wrapper, "schedule_total_steps"):
-        steps_per_epoch = int((len(train_df) + cfg["batch_size"] - 1) // cfg["batch_size"])
+        steps_per_epoch = int((len(train_df) + batch_size - 1) // batch_size)
         wrapper.schedule_total_steps = steps_per_epoch * cfg["epochs"]
     wrapper.loss = cfg.get("loss", "mse")
 
     wrapper.build(common.FixedHyperParameters(hyperparameters))
-    callbacks = [
-        EarlyStopping(
-            monitor="val_loss", patience=cfg["patience"], restore_best_weights=True
-        ),
-        ReduceLROnPlateau(
-            monitor="val_loss", factor=0.5, patience=max(2, cfg["patience"] // 2),
-            min_lr=1e-6,
-        ),
-    ]
+    callbacks = common.default_callbacks(wrapper, cfg["patience"])
 
     started_at = time.perf_counter()
     history = wrapper.fit(
         epochs=cfg["epochs"],
-        batch_size=cfg["batch_size"],
+        batch_size=batch_size,
         verbose=cfg.get("verbose", 1),
         callbacks=callbacks,
         use_validation=True,
@@ -101,11 +95,12 @@ def run(config):
         "denoise_level": cfg["denoise_level"],
         "decoder_mode": getattr(wrapper, "decoder_mode", "teacher_forcing"),
         "target_mode": getattr(wrapper, "target_mode", "absolute"),
+        "persistence_gate": bool(getattr(wrapper, "persistence_gate", False)),
         "loss": wrapper.loss,
         "training": {
             "epochs_requested": cfg["epochs"],
             "epochs_run": len(losses),
-            "batch_size": cfg["batch_size"],
+            "batch_size": batch_size,
             "patience": cfg["patience"],
             "training_time_sec": round(training_time_sec, 3),
             "final_loss": float(losses[-1]) if losses else None,

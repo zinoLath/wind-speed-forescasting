@@ -1,5 +1,6 @@
 import argparse
 import ctypes
+import gc
 import glob
 import json
 import os
@@ -175,131 +176,10 @@ class TrialTrainingProgressCallback(keras.callbacks.Callback):
 
 
 def load_dataset() -> pd.DataFrame:
-    dataset = pd.read_csv(PROJECT_ROOT / "data" / "dataset.csv")
+    """Load the forecast dataset through the shared canonical loader."""
+    from src import common
 
-    for col in dataset.columns:
-        if col in {"year", "month", "day", "hour", "minute", "id"}:
-            continue
-        if pd.api.types.is_numeric_dtype(dataset[col]):
-            continue
-        dataset[col] = pd.to_numeric(dataset[col], errors="coerce")
-        median_value = dataset[col].median()
-        if pd.notna(median_value):
-            dataset[col] = dataset[col].fillna(median_value)
-
-    dataset["timestamp"] = pd.to_datetime(dataset["id"], format="mixed")
-    dataset = dataset.sort_values("timestamp").set_index("timestamp")
-
-    cols_to_drop = [
-        "year",
-        "month",
-        "day",
-        "hour",
-        "minute",
-        "press",
-        "humid",
-        "temp",
-        "id",
-        "cis1",
-        "cis2",
-        "cis3",
-        "cis4",
-        "cis5",
-        "cis6",
-        "cis7",
-        "cis8",
-        "cis9",
-        "cis10",
-        "cis11",
-        "cis12",
-        "cis13",
-        "cis14",
-        "cis15",
-        "cis16",
-        "cis17",
-        "cis18",
-        "cis19",
-        "wdisp40",
-        "wdisp50",
-        "wdisp60",
-        "wdisp70",
-        "wdisp80",
-        "wdisp90",
-        "wdisp100",
-        "wdisp110",
-        "wdisp120",
-        "wdisp130",
-        "wdisp140",
-        "wdisp150",
-        "wdisp160",
-        "wdisp170",
-        "wdisp180",
-        "wdisp190",
-        "wdisp200",
-        "wdisp220",
-        "wdisp240",
-        "wdisp260",
-        "vertdisp40",
-        "vertdisp50",
-        "vertdisp60",
-        "vertdisp70",
-        "vertdisp80",
-        "vertdisp90",
-        "vertdisp100",
-        "vertdisp110",
-        "vertdisp120",
-        "vertdisp130",
-        "vertdisp140",
-        "vertdisp150",
-        "vertdisp160",
-        "vertdisp170",
-        "vertdisp180",
-        "vertdisp190",
-        "vertdisp200",
-        "vertdisp220",
-        "vertdisp240",
-        "vertdisp260",
-        "wdir150",
-        "wdir160",
-        "wdir170",
-        "wdir180",
-        "wdir190",
-        "wdir200",
-        "wdir220",
-        "wdir240",
-        "wdir260",
-        "verts150",
-        "verts160",
-        "verts170",
-        "verts180",
-        "verts190",
-        "verts200",
-        "verts220",
-        "verts240",
-        "verts260",
-        "ws150",
-        "ws160",
-        "ws170",
-        "ws180",
-        "ws190",
-        "ws200",
-        "ws220",
-        "ws240",
-        "ws260",
-    ]
-    dataset = dataset.drop(columns=[c for c in cols_to_drop if c in dataset.columns], errors="ignore")
-
-    heights = [40, 50, 60, 70, 80, 90, 100, 110, 120, 130, 140, 150, 160, 170, 180, 190, 200, 220, 240, 260]
-    cols_to_rename = {}
-    for height in heights:
-        cols_to_rename[f"wdir{height}"] = f"dir{height}"
-        cols_to_rename[f"verts{height}"] = f"v{height}"
-
-    dataset = dataset.rename(columns=cols_to_rename)
-    dataset = dataset.apply(pd.to_numeric, errors="coerce")
-    dataset = dataset.interpolate(limit_direction="both").ffill().bfill()
-
-    return dataset
+    return common.load_dataset(PROJECT_ROOT / "data" / "dataset.csv")
 
 
 def split_dataset(dataset: pd.DataFrame):
@@ -344,13 +224,20 @@ def build_objective(
         print(f"[trial {trial.number}] params={trial.params}")
         callbacks = [
             EarlyStopping(monitor="val_loss", patience=8, restore_best_weights=True),
-            ReduceLROnPlateau(monitor="val_loss", factor=0.5, patience=4, min_lr=1e-6),
-            OptunaPruningCallback(trial),
+        ]
+        # With a warmup+cosine schedule Keras 3 makes the optimizer LR
+        # read-only; ReduceLROnPlateau would crash on the first reduction.
+        if getattr(wrapper, "lr_schedule_mode", "constant") != "warmup_cosine":
+            callbacks.append(
+                ReduceLROnPlateau(monitor="val_loss", factor=0.5, patience=4, min_lr=1e-6)
+            )
+        callbacks.append(OptunaPruningCallback(trial))
+        callbacks.append(
             TrialTrainingProgressCallback(
                 trial_number=trial.number,
                 epoch_log_interval=epoch_log_interval,
-            ),
-        ]
+            )
+        )
 
         history = wrapper.fit(
             epochs=epochs,
@@ -373,7 +260,11 @@ def build_objective(
             f"epochs={len(history.history.get('loss', []))} elapsed={elapsed:.1f}s"
         )
 
-        return best_val_loss
+        try:
+            return best_val_loss
+        finally:
+            gc.collect()
+            K.clear_session()
 
     return objective
 

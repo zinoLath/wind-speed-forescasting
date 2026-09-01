@@ -5,6 +5,7 @@ trial for each wrapper under ``pipeline/tmp/optuna/<WrapperName>/``.
 """
 
 import argparse
+import gc
 import sys
 import time
 from pathlib import Path
@@ -25,7 +26,6 @@ STAGE = "optuna"
 
 def _run_search(wrapper_key, train_df, val_df, cfg, out_dir):
     from keras import backend as K
-    from keras.callbacks import EarlyStopping, ReduceLROnPlateau
 
     # Data preparation (wavelet denoising, scalers, sequences) does not depend
     # on the trial hyperparameters, so it runs once and is reused by every
@@ -39,31 +39,32 @@ def _run_search(wrapper_key, train_df, val_df, cfg, out_dir):
         target_col=cfg["target_col"],
         denoise=cfg["denoise"],
         denoise_level=cfg["denoise_level"],
+        persistence_gate=cfg.get("persistence_gate", False),
     )
-    if hasattr(wrapper, "schedule_total_steps"):
-        steps_per_epoch = int(np.ceil(len(train_df) / cfg["batch_size"]))
-        wrapper.schedule_total_steps = steps_per_epoch * cfg["epochs"]
     wrapper.loss = cfg.get("loss", "mse")
+    n_train_sequences = wrapper.train["X_encoder"].shape[0]
+
+    objective_cfg = cfg.get("objective") or {}
+    val_blocks = max(1, int(objective_cfg.get("val_blocks", 4)))
 
     def objective(trial):
         K.clear_session()
-        wrapper.build(common.OptunaHyperParameters(trial))
-        callbacks = [
-            EarlyStopping(
-                monitor="val_loss", patience=cfg["patience"], restore_best_weights=True
-            ),
-            ReduceLROnPlateau(
-                monitor="val_loss", factor=0.5, patience=max(2, cfg["patience"] // 2),
-                min_lr=1e-6,
-            ),
-        ]
+        hp = common.OptunaHyperParameters(trial)
+        # Sample the batch size first so the LR schedule horizon matches it.
+        batch_size = int(hp.Int("batch_size", 16, 64, step=16))
+        if hasattr(wrapper, "schedule_total_steps"):
+            steps_per_epoch = int(np.ceil(n_train_sequences / batch_size))
+            wrapper.schedule_total_steps = steps_per_epoch * cfg["epochs"]
+        # build() also samples loss / lr_schedule / weight_decay via the trial.
+        wrapper.build(hp)
+        callbacks = common.default_callbacks(wrapper, cfg["patience"])
         if cfg.get("pruning", True):
             callbacks.append(common.optuna_pruning_callback(trial))
 
         started_at = time.perf_counter()
         history = wrapper.fit(
             epochs=cfg["epochs"],
-            batch_size=cfg["batch_size"],
+            batch_size=batch_size,
             verbose=0,
             callbacks=callbacks,
             use_validation=True,
@@ -74,14 +75,14 @@ def _run_search(wrapper_key, train_df, val_df, cfg, out_dir):
         if not val_losses:
             raise RuntimeError("Training returned no val_loss.")
 
-        best_val_loss = float(np.min(val_losses))
-
-        # Optuna selects on validation RMSE measured under the inference
+        # Optuna selects on validation error measured under the inference
         # decoder convention (prepare() already rewrites the val decoder
         # inputs), because teacher-forced val_loss is a weak proxy for
         # forecast error (see docs/relatorio_transformer_improvements.md).
-        # RMSE (not MAE) is the selection metric so trials with large errors
-        # are punished harder.
+        # The objective is the mean MSE over ``val_blocks`` temporal blocks of
+        # the validation slice: a single contiguous block sits in one wind
+        # regime, and docs/estudo_transformer.md shows that regime-shift
+        # robustness is what actually predicts test error.
         val = wrapper.val
         predicted_scaled = wrapper.model.predict(
             [val["X_encoder"], val["X_decoder"]], batch_size=256, verbose=0
@@ -97,19 +98,39 @@ def _run_search(wrapper_key, train_df, val_df, cfg, out_dir):
         actuals = wrapper.scaler_target.inverse_transform(
             actual_scaled.reshape(-1, 1)
         ).ravel()
-        val_rmse = float(np.sqrt(np.mean((actuals - predictions) ** 2)))
-        val_mae = float(np.mean(np.abs(actuals - predictions)))
+
+        errors = (actuals - predictions).reshape(-1, cfg["output_steps"])
+        sequence_indices = np.arange(len(errors))
+        block_mses = [
+            float(np.mean(errors[block] ** 2))
+            for block in np.array_split(sequence_indices, val_blocks)
+        ]
+        val_mse = float(np.mean(errors ** 2))
+        val_mae = float(np.mean(np.abs(errors)))
+        val_rmse = float(np.sqrt(val_mse))
 
         trial.set_user_attr("train_epochs", len(history.history.get("loss", [])))
         trial.set_user_attr("elapsed_sec", elapsed)
-        trial.set_user_attr("val_loss", best_val_loss)
+        trial.set_user_attr("val_loss", float(np.min(val_losses)))
         trial.set_user_attr("val_mae", val_mae)
+        trial.set_user_attr("val_rmse", val_rmse)
+        trial.set_user_attr("val_block_mse", block_mses)
+        trial.set_user_attr("val_mse", val_mse)
         print(
-            f"[{wrapper_key}] trial {trial.number} val_rmse={val_rmse:.6f} "
-            f"val_mae={val_mae:.6f} val_loss={best_val_loss:.6f} "
+            f"[{wrapper_key}] trial {trial.number} block_mse={np.mean(block_mses):.6f} "
+            f"val_mse={val_mse:.6f} val_rmse={val_rmse:.6f} "
             f"epochs={trial.user_attrs['train_epochs']} elapsed={elapsed:.1f}s"
         )
-        return val_rmse
+        try:
+            return float(np.mean(block_mses))
+        finally:
+            # The wrapper is reused across trials and is the only persistent
+            # reference to the trained model, so gc_after_trial alone cannot
+            # free it. Drop the reference and tear down the TF graph right
+            # after scoring so CPU/GPU memory does not accumulate per trial.
+            wrapper.model = None
+            gc.collect()
+            K.clear_session()
 
     sampler = optuna.samplers.TPESampler(
         seed=cfg["seed"],
@@ -126,13 +147,23 @@ def _run_search(wrapper_key, train_df, val_df, cfg, out_dir):
     )
 
     started_at = time.perf_counter()
-    study.optimize(
-        objective,
-        n_trials=cfg["n_trials"],
-        timeout=cfg.get("timeout_sec"),
-        gc_after_trial=True,
-        show_progress_bar=True,
-    )
+    # Trials persist in the sqlite storage, so a rerun after Ctrl+C / OOM
+    # resumes the study where it left off. optuna's n_trials counts *new*
+    # trials per optimize() call, so subtract the trials already recorded.
+    n_remaining = max(0, cfg["n_trials"] - len(study.trials))
+    if n_remaining:
+        study.optimize(
+            objective,
+            n_trials=n_remaining,
+            timeout=cfg.get("timeout_sec"),
+            gc_after_trial=True,
+            show_progress_bar=True,
+        )
+    else:
+        print(
+            f"[{wrapper_key}] study already has {len(study.trials)} trials "
+            f"(budget {cfg['n_trials']}); nothing left to run."
+        )
     elapsed = time.perf_counter() - started_at
 
     pd.DataFrame(study.trials_dataframe()).to_csv(out_dir / "trials.csv", index=False)
@@ -140,7 +171,7 @@ def _run_search(wrapper_key, train_df, val_df, cfg, out_dir):
         out_dir / "best_trial.json",
         {
             "wrapper": wrapper_key,
-            "objective": "val_rmse",
+            "objective": f"val_block_mse(k={val_blocks})",
             "best_value": study.best_value,
             "best_params": study.best_params,
             "n_trials": len(study.trials),
@@ -149,7 +180,7 @@ def _run_search(wrapper_key, train_df, val_df, cfg, out_dir):
             "timeout_sec": cfg.get("timeout_sec"),
         },
     )
-    print(f"[{wrapper_key}] best val_rmse={study.best_value:.6f}")
+    print(f"[{wrapper_key}] best block_mse={study.best_value:.6f}")
     return {
         "best_trial_json": str(out_dir / "best_trial.json"),
         "trials_csv": str(out_dir / "trials.csv"),

@@ -18,7 +18,8 @@ python pipeline/pipeline.py                  # full pipeline
 python pipeline/pipeline.py --stage train evaluate   # only some stages
 python pipeline/step_train.py                # run a single stage standalone
 # All pipeline stages accept --config <file> (merged over
-# pipeline/pipeline.default.json). See pipeline/README.md.
+# pipeline/pipeline.default.json). Shared values live in the "common"
+# config section; stage-level values win. See pipeline/README.md.
 
 # Regression smoke tests (standalone scripts, no pytest)
 python tests/test_wrappers_build.py              # build+predict every wrapper
@@ -47,7 +48,7 @@ For linting during development, `pyflakes` and `radon` are useful but are not in
 
 Seq2Seq wind speed forecasting models (Keras/TensorFlow). All models inherit from `Seq2SeqWrapper` (`src/models/seq2seq_wrapper.py`), which provides `prepare()`, `build()`, `fit()`, `predict()`, and a batched `rolling_forecast()` (windows are plain functions of known history; a single `model.predict` call).
 
-Model registry lives in `src/common.py:WRAPPERS` with lazy imports; keys: `lstm`, `lstm_bi`, `tcn`, `tcn_bi`, `tcn_lstm`, `transformer` (Pre-LN). `validate_wrapper_names()` fails fast on duplicate `.name` values (names double as results-directory names).
+Model registry lives in `src/common.py:WRAPPERS` with lazy imports; keys: `lstm`, `lstm_bi`, `gru`, `gru_bi`, `lstm_cnn`, `tcn`, `tcn_bi`, `tcn_lstm`, `transformer` (Pre-LN). `validate_wrapper_names()` fails fast on duplicate `.name` values (names double as results-directory names).
 
 - Training loss is configurable per wrapper (`wrapper.loss`; pipeline `loss` config key), default **MSE**.
 - Validation decoder inputs use the inference convention (last observed target repeated), so val_loss/early stopping and the Optuna objective (validation RMSE) measure deployment behaviour.

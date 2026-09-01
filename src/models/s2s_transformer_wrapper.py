@@ -11,9 +11,10 @@ from tensorflow.keras.layers import (
     TimeDistributed,
 )
 from tensorflow.keras.models import Model
-from tensorflow.keras.optimizers import Adam
+from tensorflow.keras.optimizers import Adam, AdamW
 from tensorflow.keras.optimizers.schedules import LearningRateSchedule
 from .seq2seq_wrapper import Seq2SeqWrapper
+from .layers import apply_persistence_gate
 
 
 class WarmupCosineSchedule(LearningRateSchedule):
@@ -46,10 +47,10 @@ class WarmupCosineSchedule(LearningRateSchedule):
         }
 
 
-def make_learning_rate(hp, schedule_total_steps=None):
+def make_learning_rate(hp, schedule_total_steps=None, lr_min=1e-4, lr_max=1e-2, lr_default=1e-3):
     """Builds the optimizer LR, wrapping a warmup+cosine schedule when requested."""
     lr = hp.Float(
-        'learning_rate', min_value=1e-4, max_value=1e-2, sampling='LOG', default=1e-3
+        'learning_rate', min_value=lr_min, max_value=lr_max, sampling='LOG', default=lr_default
     )
     if schedule_total_steps:
         warmup_steps = max(1, int(0.1 * schedule_total_steps))
@@ -137,9 +138,13 @@ class S2STransformerWrapper(Seq2SeqWrapper):
     def build(self, hp):
         self._require_prepared()
 
-        learning_rate = make_learning_rate(
-            hp, schedule_total_steps=getattr(self, 'schedule_total_steps', None)
+        schedule_mode = hp.Choice(
+            'lr_schedule', ['constant', 'warmup_cosine'], default='warmup_cosine'
         )
+        schedule_steps = getattr(self, 'schedule_total_steps', None) if schedule_mode == 'warmup_cosine' else None
+        self.lr_schedule_mode = schedule_mode
+        learning_rate = make_learning_rate(hp, schedule_total_steps=schedule_steps)
+        weight_decay = hp.Choice('weight_decay', [0.0, 1e-5, 1e-4, 1e-3], default=0.0)
         d_model = hp.Int('d_model', min_value=32, max_value=128, step=16, default=64)
         num_heads = hp.Int('num_heads', min_value=1, max_value=8, step=1, default=4)
         num_layers = hp.Int('num_layers', min_value=1, max_value=3, step=1, default=2)
@@ -147,6 +152,8 @@ class S2STransformerWrapper(Seq2SeqWrapper):
         dropout_rate = hp.Float(
             'dropout_rate', min_value=0.0, max_value=0.3, step=0.05, default=0.1
         )
+        loss = hp.Choice('loss', ['mse', 'mae', 'huber'], default=getattr(self, 'loss', 'mse'))
+        self.loss = loss
 
         key_dim = max(1, d_model // num_heads)
 
@@ -193,11 +200,19 @@ class S2STransformerWrapper(Seq2SeqWrapper):
             Dense(1, activation='linear', name='output_dense'), name='output_layer'
         )
         decoder_outputs_final = decoder_dense(decoder_outputs)
+        if self.persistence_gate:
+            decoder_outputs_final = apply_persistence_gate(
+                decoder_outputs_final, decoder_inputs, self.output_steps
+            )
 
         self.model = Model([encoder_inputs, decoder_inputs], decoder_outputs_final)
+        if weight_decay:
+            optimizer = AdamW(learning_rate=learning_rate, weight_decay=weight_decay)
+        else:
+            optimizer = Adam(learning_rate=learning_rate)
         self.model.compile(
-            optimizer=Adam(learning_rate=learning_rate),
-            loss=getattr(self, 'loss', 'mse'),
+            optimizer=optimizer,
+            loss=loss,
             metrics=['mae'],
         )
 

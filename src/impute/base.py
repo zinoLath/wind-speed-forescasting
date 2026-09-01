@@ -27,8 +27,15 @@ def is_direction_column(col):
 
 
 def load_wind_data(path):
-    """Load a wind CSV and regularise it to a 10-minute DatetimeIndex."""
+    """Load a wind CSV and regularise it to a 10-minute DatetimeIndex.
+
+    Legacy column aliases (wdir{h}, verts{h}, ...) are canonicalised so every
+    consumer sees one name per feature (dir{h}, v{h}, ...).
+    """
+    from ..common import canonicalize_columns
+
     df = pd.read_csv(path)
+    df = canonicalize_columns(df)
     df["timestamp"] = pd.to_datetime(df["timestamp"])
     df = df.sort_values("timestamp").reset_index(drop=True)
     full_index = pd.date_range(

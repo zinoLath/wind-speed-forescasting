@@ -21,7 +21,6 @@ from src import common
 
 def run_variant(wrapper_key, dataset, target_col, hp, epochs, seed):
     from keras import backend as K
-    from keras.callbacks import EarlyStopping, ReduceLROnPlateau
 
     train_df, val_df, test_df = common.split_dataset(dataset)
     tf = common.setup_tensorflow()
@@ -42,10 +41,7 @@ def run_variant(wrapper_key, dataset, target_col, hp, epochs, seed):
         epochs=epochs,
         batch_size=32,
         verbose=0,
-        callbacks=[
-            EarlyStopping(monitor="val_loss", patience=5, restore_best_weights=True),
-            ReduceLROnPlateau(monitor="val_loss", factor=0.5, patience=3, min_lr=1e-6),
-        ],
+        callbacks=common.default_callbacks(wrapper, patience=5),
         use_validation=True,
     )
 

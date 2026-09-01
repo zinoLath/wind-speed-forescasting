@@ -47,6 +47,25 @@ usuário não existir, apenas os padrões são usados.
 
 Os caminhos (`paths`) são relativos à raiz do projeto.
 
+### Seção `common`
+
+Valores compartilhados pelos estágos vivem em `"common"` e são herdados por
+cada estágio cujo valor não esteja explicitamente definido — assim
+`input_steps`, `output_steps`, `target_col`, `denoise`, `denoise_level`,
+`seed`, `batch_size`, `loss`, `patience`, `train_ratio`/`val_ratio` e
+`params_source`/`hyperparameters` são declarados uma única vez. A precedência
+é sempre: **valor do estágio > valor do usuário em `common` > default do
+estágio > default em `common`**.
+
+Exemplo — trocar a seed de tudo e a paciência apenas do walk-forward:
+
+```json
+{
+  "common": {"seed": 7},
+  "walkforward": {"patience": 20}
+}
+```
+
 ## Como executar
 
 ### Pipeline completa (em sequência)

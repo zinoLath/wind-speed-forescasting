@@ -16,7 +16,7 @@ def tcn_hyperparameters(hp, side, filters, kernel_size, nb_stacks, dropout_rate,
     ranges = TCN_RANGES[side]
     values = {
         "filters": hp.Int(f"{side}_filters", 32, ranges["max_filters"], step=16, default=filters),
-        "kernel_size": hp.Int(f"{side}_kernel_size", 2, 3, default=kernel_size),
+        "kernel_size": hp.Int(f"{side}_kernel_size", 2, 4, default=kernel_size),
         "nb_stacks": hp.Int(f"{side}_nb_stacks", 1, 2, default=nb_stacks),
         "dropout_rate": hp.Float(
             f"{side}_dropout_rate", 0.0, 0.5, step=0.05, default=dropout_rate

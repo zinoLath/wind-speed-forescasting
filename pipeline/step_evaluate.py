@@ -141,6 +141,7 @@ def run(config):
         denoise=metadata["denoise"],
         denoise_level=metadata["denoise_level"],
         create_sequences=False,
+        persistence_gate=bool(metadata.get("persistence_gate", False)),
     )
     wrapper.build(common.FixedHyperParameters(metadata["hyperparameters"]))
     wrapper.model.load_weights(model_path)

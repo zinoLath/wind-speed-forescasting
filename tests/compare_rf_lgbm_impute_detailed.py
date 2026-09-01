@@ -262,7 +262,7 @@ def run_optuna(
             direction="minimize",
             sampler=optuna.samplers.TPESampler(seed=seed),
         )
-        study.optimize(objective, n_trials=trials)
+        study.optimize(objective, n_trials=trials, gc_after_trial=True)
         cached[model] = {
             "params": study.best_trial.params,
             "objective_score": float(study.best_value),

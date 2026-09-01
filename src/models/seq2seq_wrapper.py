@@ -6,12 +6,20 @@ from ..utils import wavelet_denoising
 
 class Seq2SeqWrapper:
 
+    # Total optimizer steps used by warmup+cosine LR schedules; stages set it
+    # before build() when the chosen lr_schedule is "warmup_cosine".
+    schedule_total_steps = None
+
     def __init__(self):
         self.name = "Seq2Seq_Base"
         # Training loss defaults to MSE so large forecast errors are punished
-        # harder than with MAE. Override on the instance (or via the pipeline
-        # ``loss`` config key) to switch to mae/huber.
+        # harder than with MAE. build() overrides it from the searched
+        # ``loss`` hyperparameter; the pipeline ``loss`` config key feeds it.
         self.loss = "mse"
+        # When True the decoder inputs gain an extra channel carrying the last
+        # observed target, and the output passes through a learned per-horizon
+        # persistence gate (see src/models/layers.py).
+        self.persistence_gate = False
 
     @staticmethod
     def create_sequences(
@@ -21,14 +29,19 @@ class Seq2SeqWrapper:
         target_col_index,
         decoder_mode="teacher_forcing",
         target_mode="absolute",
+        persistence_gate=False,
     ):
         """
         Create encoder/decoder/target sequences for the Seq2Seq model.
 
         Vectorised with sliding windows and returned as float32 arrays:
         - X_encoder: (n, input_steps, n_features)
-        - X_decoder: (n, output_steps, 1 or 2)
+        - X_decoder: (n, output_steps, 1-3)
         - y_decoder: (n, output_steps, 1)
+
+        With ``persistence_gate`` the decoder inputs gain a trailing channel
+        holding the last observed target at every step (the blend reference
+        used by the output gate).
         """
         data = np.asarray(data, dtype=np.float32)
         n_sequences = len(data) - input_steps - output_steps + 1
@@ -49,13 +62,19 @@ class Seq2SeqWrapper:
         last_observed = target_windows[:, input_steps - 1]
 
         if decoder_mode == "teacher_forcing":
-            X_decoder = np.zeros((n_sequences, output_steps, 1), dtype=np.float32)
+            width = 2 if persistence_gate else 1
+            X_decoder = np.zeros((n_sequences, output_steps, width), dtype=np.float32)
             X_decoder[:, 0, 0] = last_observed
             X_decoder[:, 1:, 0] = target_windows[:, input_steps:-1]
+            if persistence_gate:
+                X_decoder[:, :, 1] = last_observed[:, None]
         elif decoder_mode == "direct":
-            X_decoder = np.empty((n_sequences, output_steps, 2), dtype=np.float32)
+            width = 3 if persistence_gate else 2
+            X_decoder = np.empty((n_sequences, output_steps, width), dtype=np.float32)
             X_decoder[:, :, 0] = last_observed[:, None]
             X_decoder[:, :, 1] = np.arange(1, output_steps + 1) / output_steps
+            if persistence_gate:
+                X_decoder[:, :, 2] = last_observed[:, None]
         else:
             raise ValueError(f"Unknown decoder mode: {decoder_mode}")
 
@@ -67,7 +86,9 @@ class Seq2SeqWrapper:
 
         return X_encoder, X_decoder, y.reshape(n_sequences, output_steps, 1)
 
-    def prepare_data(self, data, input_steps, output_steps, target_col, scaler_target=None, scaler_other=None, create_sequences=True, denoise=("ws100",), decoder_mode=None, target_mode=None):
+    def prepare_data(self, data, input_steps, output_steps, target_col, scaler_target=None, scaler_other=None, create_sequences=True, denoise=("ws100",), decoder_mode=None, target_mode=None, persistence_gate=None):
+        if persistence_gate is None:
+            persistence_gate = getattr(self, "persistence_gate", False)
         data = data.copy()
         values = {}# Aplica o denoising em cada coluna e armazena os resultados
         for col in denoise:
@@ -98,6 +119,7 @@ class Seq2SeqWrapper:
                 target_col_index,
                 decoder_mode=decoder_mode or getattr(self, "decoder_mode", "teacher_forcing"),
                 target_mode=target_mode or getattr(self, "target_mode", "absolute"),
+                persistence_gate=persistence_gate,
             )
             values['X_encoder'] = X_encoder
             values['X_decoder'] = X_decoder
@@ -110,7 +132,7 @@ class Seq2SeqWrapper:
         values['target_col_index'] = target_col_index
         return values, variables_scaled
 
-    def prepare(self, train_data, val_data, input_steps=72, output_steps=36, denoise_level=2, target_col='ws100_wavelet', denoise=("ws100",), decoder_mode="teacher_forcing", target_mode="absolute", create_sequences=True, validate_with_inference_decoder=True):
+    def prepare(self, train_data, val_data, input_steps=72, output_steps=36, denoise_level=2, target_col='ws100_wavelet', denoise=("ws100",), decoder_mode="teacher_forcing", target_mode="absolute", create_sequences=True, validate_with_inference_decoder=True, persistence_gate=False):
 
         self.input_steps = input_steps
         self.output_steps = output_steps
@@ -119,6 +141,7 @@ class Seq2SeqWrapper:
         self.denoise_level = denoise_level
         self.decoder_mode = decoder_mode
         self.target_mode = target_mode
+        self.persistence_gate = persistence_gate
 
         self.train, processed_train = self.prepare_data(train_data,
                                        input_steps,
@@ -143,7 +166,9 @@ class Seq2SeqWrapper:
         else:
             # Scaler-only preparation (used before loading saved weights).
             self.num_encoder_features = processed_train.shape[1]
-            self.num_decoder_features = 2 if decoder_mode == "direct" else 1
+            self.num_decoder_features = (2 if decoder_mode == "direct" else 1) + (
+                1 if persistence_gate else 0
+            )
 
         if create_sequences and decoder_mode == "teacher_forcing" and validate_with_inference_decoder:
             # At deployment the decoder never sees ground-truth future steps;
@@ -215,17 +240,25 @@ class Seq2SeqWrapper:
         return array, target_idx
 
     @staticmethod
-    def _build_decoder_input(encoder_window, output_steps, decoder_mode, target_col_index):
+    def _build_decoder_input(encoder_window, output_steps, decoder_mode, target_col_index, persistence_gate=False):
         """Inference-time decoder input: the last observed target, as seen at
-        deployment (the model never receives ground-truth future steps)."""
+        deployment (the model never receives ground-truth future steps). With
+        ``persistence_gate`` a trailing channel repeats the last observed
+        value at every decoder step (the output gate reference)."""
         last_observed = encoder_window[..., -1, target_col_index]
         if decoder_mode == "direct":
-            decoder_input = np.empty((*encoder_window.shape[:-2], output_steps, 2), dtype=np.float32)
+            width = 3 if persistence_gate else 2
+            decoder_input = np.empty((*encoder_window.shape[:-2], output_steps, width), dtype=np.float32)
             decoder_input[..., :, 0] = last_observed[..., None]
             decoder_input[..., :, 1] = np.arange(1, output_steps + 1) / output_steps
+            if persistence_gate:
+                decoder_input[..., :, 2] = last_observed[..., None]
         else:
-            decoder_input = np.zeros((*encoder_window.shape[:-2], output_steps, 1), dtype=np.float32)
+            width = 2 if persistence_gate else 1
+            decoder_input = np.zeros((*encoder_window.shape[:-2], output_steps, width), dtype=np.float32)
             decoder_input[..., 0, 0] = last_observed
+            if persistence_gate:
+                decoder_input[..., :, 1] = last_observed[..., None]
         return decoder_input, last_observed
 
     def predict(self, input_data):
@@ -237,7 +270,8 @@ class Seq2SeqWrapper:
             )
         encoder_input = data_scaled.reshape(1, self.input_steps, data_scaled.shape[1])
         decoder_input, last_observed = self._build_decoder_input(
-            encoder_input, self.output_steps, self.decoder_mode, target_idx
+            encoder_input, self.output_steps, self.decoder_mode, target_idx,
+            persistence_gate=self.persistence_gate,
         )
 
         prediction = self.model.predict([encoder_input, decoder_input], verbose=0)
@@ -269,7 +303,8 @@ class Seq2SeqWrapper:
         )[:count]
         encoder_input = np.ascontiguousarray(np.moveaxis(windows, 2, 1))
         decoder_input, last_observed = self._build_decoder_input(
-            encoder_input, self.output_steps, self.decoder_mode, target_idx
+            encoder_input, self.output_steps, self.decoder_mode, target_idx,
+            persistence_gate=self.persistence_gate,
         )
 
         predictions = self.model.predict(

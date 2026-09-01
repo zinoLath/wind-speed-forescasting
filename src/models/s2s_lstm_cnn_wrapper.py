@@ -2,6 +2,7 @@ from tensorflow.keras import backend as K
 from tensorflow.keras.models import Model
 from tensorflow.keras.layers import (
     Input,
+    LSTM,
     Dropout,
     Dense,
     Concatenate,
@@ -18,10 +19,16 @@ from .s2s_transformer_wrapper import make_learning_rate
 from .tcn_hp import tcn_hyperparameters
 
 
-class S2STCNWrapper(Seq2SeqWrapper):
+class S2SLSTMCNNWrapper(Seq2SeqWrapper):
+    """Seq2Seq with an LSTM encoder and a CNN (TCN) decoder.
+
+    Mirrors ``Seq2Seq_TCN_LSTM`` in reverse: the recurrent encoder summarises
+    the known history, and the decoder stacks causal convolutions over the
+    horizon inputs instead of an RNN.
+    """
 
     def __init__(self):
-        self.name = "Seq2Seq_TCN"
+        self.name = "Seq2Seq_LSTM_CNN"
 
     def build(self, hp):
         self._require_prepared()
@@ -31,7 +38,7 @@ class S2STCNWrapper(Seq2SeqWrapper):
         self.lr_schedule_mode = schedule_mode
         learning_rate = make_learning_rate(
             hp, schedule_total_steps=schedule_steps,
-            lr_min=1e-4, lr_max=1e-2, lr_default=0.0026677478212305725,
+            lr_min=1e-4, lr_max=1e-2, lr_default=0.001,
         )
         weight_decay = hp.Choice('weight_decay', [0.0, 1e-5, 1e-4, 1e-3], default=0.0)
         loss = hp.Choice('loss', ['mse', 'mae', 'huber'], default=getattr(self, 'loss', 'mse'))
@@ -42,32 +49,31 @@ class S2STCNWrapper(Seq2SeqWrapper):
         else:
             optimizer = Adam(learning_rate=learning_rate)
 
-        encoder_tcn_hp = tcn_hyperparameters(
-            hp, "encoder", filters=48, kernel_size=2, nb_stacks=1,
-            dropout_rate=0.45, dilation_rate=4,
+        encoder_layers = hp.Int('encoder_layers', min_value=1, max_value=2, step=1, default=1)
+        lstm_units = hp.Int('lstm_units', min_value=32, max_value=512, step=32, default=64)
+        encoder_dropout_rate = hp.Float(
+            'encoder_dropout_rate', min_value=0.0, max_value=0.6, step=0.05, default=0.1
         )
+
         decoder_tcn_hp = tcn_hyperparameters(
             hp, "decoder", filters=48, kernel_size=2, nb_stacks=1,
-            dropout_rate=0.0, dilation_rate=4,
+            dropout_rate=0.1, dilation_rate=4,
         )
 
         encoder_inputs = Input(
             shape=(self.input_steps, self.num_encoder_features), name='encoder_inputs'
         )
-        encoder_outputs = TCN(
-            nb_filters=encoder_tcn_hp['filters'],
-            kernel_size=encoder_tcn_hp['kernel_size'],
-            nb_stacks=encoder_tcn_hp['nb_stacks'],
-            dropout_rate=encoder_tcn_hp['dropout_rate'],
-            dilations=encoder_tcn_hp['dilations'],
-            use_layer_norm=True,
-            use_skip_connections=False,
-            return_sequences=True,
-            name='encoder_tcn',
-        )(encoder_inputs)
-        encoder_outputs = Dropout(0.1, name='encoder_dropout')(encoder_outputs)
+        encoder_x = encoder_inputs
+        for i in range(encoder_layers - 1):
+            encoder_x = LSTM(
+                lstm_units, return_sequences=True, name=f'encoder_lstm_{i}'
+            )(encoder_x)
+        encoder_outputs, _, _ = LSTM(
+            lstm_units, return_sequences=True, return_state=True, name='encoder_lstm'
+        )(encoder_x)
+        encoder_outputs = Dropout(encoder_dropout_rate, name='encoder_dropout')(encoder_outputs)
 
-        encoder_dim = encoder_tcn_hp['filters']
+        encoder_dim = lstm_units
 
         # Mean-pooled encoder summary repeated across decoder steps.
         encoder_context = Lambda(
