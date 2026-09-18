@@ -58,6 +58,7 @@ class S2SLSTMCNNWrapper(Seq2SeqWrapper):
         decoder_tcn_hp = tcn_hyperparameters(
             hp, "decoder", filters=48, kernel_size=2, nb_stacks=1,
             dropout_rate=0.1, dilation_rate=4,
+            min_receptive_field=self.output_steps,
         )
 
         encoder_inputs = Input(

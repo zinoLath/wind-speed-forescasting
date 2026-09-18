@@ -149,6 +149,7 @@ def setup_tensorflow(gpu_enabled=True):
 
 
 WRAPPERS = {
+    "lstm_original": ("src.models.s2s_lstm_original_wrapper", "S2SLSTMOriginalWrapper"),
     "lstm": ("src.models.s2s_lstm_wrapper", "S2SLSTMWrapper"),
     "lstm_bi": ("src.models.s2s_lstm_bi_wrapper", "S2SLSTMBidirectionalWrapper"),
     "gru": ("src.models.s2s_gru_wrapper", "S2SGRUWrapper"),
@@ -284,6 +285,15 @@ def optuna_pruning_callback(trial):
 # every wrapper; older best_trial.json files without them fall back to these
 # values through FixedHyperParameters.
 DEFAULT_HYPERPARAMETERS = {
+    "lstm_original": {
+        "learning_rate": 0.001,
+        "lstm_units": 256,
+        "encoder_dropout_rate": 0.1,
+        "decoder_dropout_rate": 0.1,
+        "loss": "mse",
+        "lr_schedule": "constant",
+        "weight_decay": 0.0,
+    },
     "lstm": {
         "learning_rate": 0.001249176597990083,
         "lstm_units": 256,

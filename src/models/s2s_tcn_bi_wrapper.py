@@ -46,10 +46,12 @@ class S2STCNBidirectionalWrapper(Seq2SeqWrapper):
         encoder_tcn_hp = tcn_hyperparameters(
             hp, "encoder", filters=64, kernel_size=2, nb_stacks=1,
             dropout_rate=0.2, dilation_rate=2,
+            min_receptive_field=self.input_steps,
         )
         decoder_tcn_hp = tcn_hyperparameters(
             hp, "decoder", filters=80, kernel_size=2, nb_stacks=2,
             dropout_rate=0.0, dilation_rate=1,
+            min_receptive_field=self.output_steps,
         )
 
         optimizer = Adam(learning_rate=learning_rate)

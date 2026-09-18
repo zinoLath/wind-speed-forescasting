@@ -1,17 +1,32 @@
 """Shared hyperparameter search space for the TCN-based wrappers."""
 
 TCN_RANGES = {
-    "encoder": {"max_filters": 256, "max_dilation": 5},
-    "decoder": {"max_filters": 128, "max_dilation": 4},
+    "encoder": {"max_filters": 320, "max_dilation": 6},
+    "decoder": {"max_filters": 192, "max_dilation": 5},
 }
 
 
-def tcn_hyperparameters(hp, side, filters, kernel_size, nb_stacks, dropout_rate, dilation_rate):
+def tcn_receptive_field(kernel_size, nb_stacks, dilations):
+    """Receptive field of a TCN stack (matches the ``tcn`` library)."""
+    return 1 + 2 * (kernel_size - 1) * nb_stacks * sum(dilations)
+
+
+def tcn_hyperparameters(
+    hp, side, filters, kernel_size, nb_stacks, dropout_rate, dilation_rate,
+    min_receptive_field=0,
+):
     """Collect the search space for one TCN block ("encoder" or "decoder").
 
     The keyword arguments are the historical defaults of each wrapper. The
     dilation list is derived from the sampled dilation_rate as powers of two,
     matching the original per-wrapper implementations.
+
+    When *min_receptive_field* is given (e.g. the input/output window), the
+    dilation list is extended with larger powers of two until the receptive
+    field covers it, so a sampled config can never see less history than the
+    forecast window. The extension is deterministic given the sampled
+    hyperparameters, so replaying a saved best_trial.json reproduces the same
+    model.
     """
     ranges = TCN_RANGES[side]
     values = {
@@ -25,5 +40,10 @@ def tcn_hyperparameters(hp, side, filters, kernel_size, nb_stacks, dropout_rate,
             f"{side}_dilation_rate", 1, ranges["max_dilation"], default=dilation_rate
         ),
     }
-    values["dilations"] = [2 ** i for i in range(values["dilation_rate"])]
+    dilations = [2 ** i for i in range(values["dilation_rate"])]
+    while min_receptive_field and tcn_receptive_field(
+        values["kernel_size"], values["nb_stacks"], dilations
+    ) < min_receptive_field:
+        dilations.append(2 ** len(dilations))
+    values["dilations"] = dilations
     return values

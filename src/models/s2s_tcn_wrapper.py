@@ -45,10 +45,28 @@ class S2STCNWrapper(Seq2SeqWrapper):
         encoder_tcn_hp = tcn_hyperparameters(
             hp, "encoder", filters=48, kernel_size=2, nb_stacks=1,
             dropout_rate=0.45, dilation_rate=4,
+            min_receptive_field=self.input_steps,
         )
         decoder_tcn_hp = tcn_hyperparameters(
             hp, "decoder", filters=48, kernel_size=2, nb_stacks=1,
             dropout_rate=0.0, dilation_rate=4,
+            min_receptive_field=self.output_steps,
+        )
+        # Post-block dropout rates, searchable like the LSTM wrapper's
+        # encoder/decoder dropout. Defaults keep the historical fixed 0.1 so
+        # older Optuna best_trial.json files stay compatible.
+        encoder_post_dropout_rate = hp.Float(
+            'encoder_post_dropout_rate', min_value=0.0, max_value=0.6, step=0.05, default=0.1
+        )
+        decoder_post_dropout_rate = hp.Float(
+            'decoder_post_dropout_rate', min_value=0.0, max_value=0.6, step=0.05, default=0.1
+        )
+        # How the encoder summary is injected into the decoder: mean pooling
+        # over the whole window, the most recent step, or both concatenated.
+        # "mean" keeps the historical behaviour; "last" mirrors the LSTM
+        # family's final-state conditioning.
+        context_pooling = hp.Choice(
+            'context_pooling', ['mean', 'last', 'mean_last'], default='mean'
         )
 
         encoder_inputs = Input(
@@ -65,14 +83,25 @@ class S2STCNWrapper(Seq2SeqWrapper):
             return_sequences=True,
             name='encoder_tcn',
         )(encoder_inputs)
-        encoder_outputs = Dropout(0.1, name='encoder_dropout')(encoder_outputs)
+        encoder_outputs = Dropout(
+            encoder_post_dropout_rate, name='encoder_dropout'
+        )(encoder_outputs)
 
         encoder_dim = encoder_tcn_hp['filters']
 
-        # Mean-pooled encoder summary repeated across decoder steps.
-        encoder_context = Lambda(
-            lambda x: K.mean(x, axis=1), name='encoder_context'
-        )(encoder_outputs)
+        if context_pooling == 'mean':
+            encoder_context = Lambda(
+                lambda x: K.mean(x, axis=1), name='encoder_context'
+            )(encoder_outputs)
+        elif context_pooling == 'last':
+            encoder_context = Lambda(
+                lambda x: x[:, -1, :], name='encoder_context'
+            )(encoder_outputs)
+        else:
+            encoder_context = Concatenate(name='encoder_context')([
+                Lambda(lambda x: K.mean(x, axis=1), name='encoder_context_mean')(encoder_outputs),
+                Lambda(lambda x: x[:, -1, :], name='encoder_context_last')(encoder_outputs),
+            ])
         encoder_context_repeated = RepeatVector(
             self.output_steps, name='encoder_context_repeated'
         )(encoder_context)
@@ -95,7 +124,9 @@ class S2STCNWrapper(Seq2SeqWrapper):
             return_sequences=True,
             name='decoder_tcn',
         )(decoder_inputs_with_context)
-        decoder_outputs = Dropout(0.1, name='decoder_dropout')(decoder_outputs)
+        decoder_outputs = Dropout(
+            decoder_post_dropout_rate, name='decoder_dropout'
+        )(decoder_outputs)
 
         # Project the decoder outputs to the encoder dimension so the
         # attention dot-product is well-defined.

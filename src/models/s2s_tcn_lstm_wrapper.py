@@ -44,6 +44,7 @@ class S2STCNLSTMWrapper(Seq2SeqWrapper):
         encoder_tcn_hp = tcn_hyperparameters(
             hp, "encoder", filters=128, kernel_size=3, nb_stacks=1,
             dropout_rate=0.1, dilation_rate=4,
+            min_receptive_field=self.input_steps,
         )
 
         lstm_units = hp.Int(
