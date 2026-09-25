@@ -65,7 +65,9 @@ class S2SLSTMBidirectionalWrapper(Seq2SeqWrapper):
         decoder_outputs_final = decoder_dense(decoder_combined_context)
         if self.persistence_gate:
             decoder_outputs_final = apply_persistence_gate(
-                decoder_outputs_final, decoder_inputs, self.output_steps
+                decoder_outputs_final, decoder_inputs, self.output_steps,
+                features=decoder_combined_context,
+                mode=getattr(self, "gate_mode", "static"),
             )
 
         self.model = Model([encoder_inputs, decoder_inputs], decoder_outputs_final)

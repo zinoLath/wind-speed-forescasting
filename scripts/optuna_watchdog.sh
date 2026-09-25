@@ -1,13 +1,16 @@
 #!/usr/bin/env bash
 # Aggressive Optuna run with a RAM watchdog.
 #
-# Runs `pipeline/step_optuna.py --config <cfg>` and restarts it whenever the
-# total used RAM exceeds MAX_USED_GB (default 40). Because Optuna studies
-# persist to sqlite with load_if_exists=True, each restart resumes exactly
-# where the previous run stopped. Logs to $LOG.
+# Runs `pipeline/step_optuna.py --config <cfg> [--wrappers ...]` and restarts
+# it whenever the total used RAM exceeds MAX_USED_GB (default 40). Because
+# Optuna studies persist to sqlite with load_if_exists=True, each restart
+# resumes exactly where the previous run stopped. Logs to $LOG.
+#
+# FAIL_ORPHANS=0 skips marking RUNNING trials as FAIL on restart (by default
+# they are failed so the n_remaining budget is not spent on dead trials).
 #
 # Usage:
-#   bash scripts/optuna_watchdog.sh [config_path]
+#   bash scripts/optuna_watchdog.sh [config_path] [wrapper ...]
 
 set -u
 
@@ -15,9 +18,12 @@ PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$PROJECT_ROOT"
 
 CONFIG="${1:-pipeline/pipeline.optuna_tcn_aggressive.json}"
+[ $# -gt 0 ] && shift
+WRAPPER_ARGS=("$@")
 MAX_USED_GB="${MAX_USED_GB:-40}"
 POLL_SECS="${POLL_SECS:-5}"
 LOG="${LOG:-pipeline/tmp/optuna_watchdog.log}"
+FAIL_ORPHANS="${FAIL_ORPHANS:-1}"
 
 mkdir -p "$(dirname "$LOG")"
 source .venv/bin/activate
@@ -25,6 +31,37 @@ if [ -f scripts/tf_gpu_env.sh ]; then
     # shellcheck disable=SC1091
     source scripts/tf_gpu_env.sh
 fi
+
+# Ask glibc to return freed host memory to the OS more eagerly; TensorFlow
+# tends to hoard freed blocks, which is what drives the slow RAM creep that
+# the watchdog has to police.
+export MALLOC_TRIM_THRESHOLD_="${MALLOC_TRIM_THRESHOLD_:-134217728}"
+
+fail_orphan_trials() {
+    # Trials left in RUNNING by a killed process waste trial budget on every
+    # restart (n_remaining counts them); mark them FAIL so the budget is only
+    # spent on real work.
+    python - "$CONFIG" <<'PY'
+import glob
+import json
+import sys
+
+import optuna
+from optuna.trial import TrialState
+
+optuna.logging.set_verbosity(optuna.logging.WARNING)
+config = json.load(open(sys.argv[1]))
+tmp_dir = config.get("paths", {}).get("tmp_dir", "pipeline/tmp")
+subdir = config.get("optuna", {}).get("storage_subdir", "optuna")
+for db in glob.glob(f"{tmp_dir}/{subdir}/*/optuna.db"):
+    storage = optuna.storages.RDBStorage(url=f"sqlite:///{db}")
+    for summary in storage.get_all_studies():
+        for trial in storage.get_all_trials(
+            summary._study_id, states=(TrialState.RUNNING,), deepcopy=False
+        ):
+            storage.set_trial_state_values(trial._trial_id, state=TrialState.FAIL)
+PY
+}
 
 log() {
     echo "[$(date '+%F %T')] $*" | tee -a "$LOG"
@@ -38,8 +75,12 @@ used_ram_gb() {
 
 restarts=0
 while :; do
-    log "Starting optuna run (config=$CONFIG, restarts=$restarts)..."
-    python pipeline/step_optuna.py --config "$CONFIG" 2>&1 | tee -a "$LOG" &
+    log "Starting optuna run (config=$CONFIG, wrappers=${WRAPPER_ARGS[*]:-all}, restarts=$restarts, fail_orphans=$FAIL_ORPHANS)..."
+    if [ ${#WRAPPER_ARGS[@]} -gt 0 ]; then
+        python pipeline/step_optuna.py --config "$CONFIG" --wrappers "${WRAPPER_ARGS[@]}" 2>&1 | tee -a "$LOG" &
+    else
+        python pipeline/step_optuna.py --config "$CONFIG" 2>&1 | tee -a "$LOG" &
+    fi
     pid=$!
 
     killed=0
@@ -59,6 +100,7 @@ while :; do
 
     if [ "$killed" -eq 1 ]; then
         log "Run killed by watchdog; restarting from checkpoint."
+        [ "$FAIL_ORPHANS" = "1" ] && fail_orphan_trials
         restarts=$((restarts + 1))
         sleep 5
         continue
@@ -71,6 +113,7 @@ while :; do
         break
     fi
     log "Run exited with code $code; restarting (restarts=$((restarts + 1)))."
+    [ "$FAIL_ORPHANS" = "1" ] && fail_orphan_trials
     restarts=$((restarts + 1))
     sleep 5
 done

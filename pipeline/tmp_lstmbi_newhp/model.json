@@ -1,0 +1,52 @@
+{
+  "model_class": "S2SLSTMBidirectionalWrapper",
+  "wrapper_key": "lstm_bi",
+  "name": "Seq2Seq_LSTM_Bidirectional",
+  "created_at": "2026-09-24T06:58:24.994121+00:00",
+  "hyperparameters": {
+    "batch_size": 48,
+    "lr_schedule": "constant",
+    "learning_rate": 0.00017005174072002959,
+    "weight_decay": 0.001,
+    "encoder_layers": 1,
+    "lstm_units": 160,
+    "encoder_dropout_rate": 0.25,
+    "decoder_dropout_rate": 0.35000000000000003,
+    "loss": "huber"
+  },
+  "params_source": "explicit config",
+  "input_steps": 72,
+  "output_steps": 36,
+  "target_col": "ws100_wavelet",
+  "denoise": [
+    "ws100",
+    "ws40",
+    "v40"
+  ],
+  "denoise_level": 1,
+  "decoder_mode": "teacher_forcing",
+  "target_mode": "absolute",
+  "persistence_gate": false,
+  "gate_mode": "static",
+  "context_mode": "horizon",
+  "loss": "huber",
+  "training": {
+    "epochs_requested": 100,
+    "epochs_run": 14,
+    "batch_size": 48,
+    "patience": 12,
+    "training_time_sec": 45.373,
+    "final_loss": 0.0018651479622349143,
+    "final_val_loss": 0.004177046474069357,
+    "best_val_loss": 0.00373302074149251,
+    "seed": 42
+  },
+  "dataset": {
+    "source": "data/dataset.csv",
+    "train_rows": 5670,
+    "val_rows": 1512,
+    "test_rows": 379,
+    "train_ratio": 0.75,
+    "val_ratio": 0.2
+  }
+}

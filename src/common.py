@@ -256,7 +256,13 @@ def default_callbacks(wrapper, patience, min_lr=1e-6):
 
 
 def optuna_pruning_callback(trial):
-    """Keras callback that reports val_loss to Optuna for trial pruning.
+    """Keras callback that reports val_mae to Optuna for trial pruning.
+
+    The reported value must be comparable across trials: ``val_loss`` is
+    sampled per trial (mse/mae/huber) and each function lives on a different
+    scale, which biases the pruner by loss choice. ``val_mae`` is computed by
+    every wrapper (``metrics=['mae']``) in scaled units under the inference
+    decoder convention, so it is a single consistent signal for pruning.
 
     Created through a factory so this module stays import-free of TensorFlow.
     """
@@ -268,10 +274,10 @@ def optuna_pruning_callback(trial):
             self.trial = trial
 
         def on_epoch_end(self, epoch, logs=None):
-            val_loss = (logs or {}).get("val_loss")
-            if val_loss is None:
+            val_mae = (logs or {}).get("val_mae")
+            if val_mae is None:
                 return
-            self.trial.report(float(val_loss), step=epoch)
+            self.trial.report(float(val_mae), step=epoch)
             if self.trial.should_prune():
                 import optuna
 

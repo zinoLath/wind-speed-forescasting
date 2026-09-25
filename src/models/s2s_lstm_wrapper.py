@@ -40,29 +40,33 @@ class S2SLSTMWrapper(Seq2SeqWrapper):
         encoder_lstm = LSTM(lstm_units, return_sequences=True, return_state=True, name='encoder_lstm')
         encoder_outputs, forward_h, forward_c = encoder_lstm(encoder_x)
 
-        state_h = Concatenate()([forward_h])
-        state_c = Concatenate()([forward_c])
+        state_h = Concatenate(name='state_h')([forward_h])
+        state_c = Concatenate(name='state_c')([forward_c])
 
 
-        encoder_outputs = Dropout(encoder_dropout_rate)(encoder_outputs)
+        encoder_outputs = Dropout(encoder_dropout_rate, name='encoder_dropout')(encoder_outputs)
 
         decoder_inputs = Input(shape=(self.output_steps, self.num_decoder_features), name='decoder_inputs')
 
         decoder_lstm = LSTM(lstm_units, return_sequences=True, return_state=True, name='decoder_lstm')
         decoder_outputs, _, _ = decoder_lstm(decoder_inputs, initial_state=[state_h, state_c])
 
-        decoder_outputs = Dropout(decoder_dropout_rate)(decoder_outputs)
+        decoder_outputs = Dropout(decoder_dropout_rate, name='decoder_dropout')(decoder_outputs)
 
         attention_layer = Attention(name='attention_layer')
         attention_outputs = attention_layer([decoder_outputs, encoder_outputs])
 
-        decoder_combined_context = Concatenate(axis=-1)([decoder_outputs, attention_outputs])
+        decoder_combined_context = Concatenate(
+            axis=-1, name='decoder_combined_context'
+        )([decoder_outputs, attention_outputs])
 
         decoder_dense = TimeDistributed(Dense(1, activation='linear'), name='output_layer')
         decoder_outputs_final = decoder_dense(decoder_combined_context)
         if self.persistence_gate:
             decoder_outputs_final = apply_persistence_gate(
-                decoder_outputs_final, decoder_inputs, self.output_steps
+                decoder_outputs_final, decoder_inputs, self.output_steps,
+                features=decoder_combined_context,
+                mode=getattr(self, "gate_mode", "static"),
             )
 
         self.model = Model([encoder_inputs, decoder_inputs], decoder_outputs_final)

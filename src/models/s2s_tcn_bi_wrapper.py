@@ -1,3 +1,4 @@
+import tensorflow as tf
 from tensorflow.keras import backend as K
 from tensorflow.keras.models import Model
 from tensorflow.keras.layers import (
@@ -88,9 +89,28 @@ class S2STCNBidirectionalWrapper(Seq2SeqWrapper):
         decoder_inputs = Input(
             shape=(self.output_steps, self.num_decoder_features), name='decoder_inputs'
         )
-        decoder_inputs_with_context = Concatenate(
-            axis=-1, name='decoder_inputs_with_context'
-        )([decoder_inputs, encoder_context_repeated])
+
+        # Context injection into the decoder TCN: broadcast to every step
+        # ("repeat", the historical behaviour), not at all ("none"),
+        # or broadcast plus a per-step horizon fraction channel ("horizon").
+        self.context_mode = getattr(self, 'context_mode', 'repeat')
+        if self.context_mode == 'none':
+            decoder_inputs_with_context = decoder_inputs
+        else:
+            decoder_features = [decoder_inputs]
+            if self.context_mode == 'horizon':
+                output_steps = int(self.output_steps)
+                decoder_features.append(Lambda(
+                    lambda x, steps=output_steps: tf.tile(tf.reshape(
+                        tf.linspace(0.0, 1.0, steps), (1, -1, 1)),
+                        [tf.shape(x)[0], 1, 1]),
+                    output_shape=(output_steps, 1),
+                    name='decoder_horizon_channel',
+                )(decoder_inputs))
+            decoder_features.append(encoder_context_repeated)
+            decoder_inputs_with_context = Concatenate(
+                axis=-1, name='decoder_inputs_with_context'
+            )(decoder_features)
 
         decoder_outputs = TCN(
             nb_filters=decoder_tcn_hp['filters'],
@@ -123,7 +143,9 @@ class S2STCNBidirectionalWrapper(Seq2SeqWrapper):
         decoder_outputs_final = decoder_dense(decoder_combined_context)
         if self.persistence_gate:
             decoder_outputs_final = apply_persistence_gate(
-                decoder_outputs_final, decoder_inputs, self.output_steps
+                decoder_outputs_final, decoder_inputs, self.output_steps,
+                features=decoder_combined_context,
+                mode=getattr(self, "gate_mode", "static"),
             )
 
         self.model = Model([encoder_inputs, decoder_inputs], decoder_outputs_final)

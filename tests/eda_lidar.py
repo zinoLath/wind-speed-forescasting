@@ -118,30 +118,35 @@ def plot_overview(df, report):
 # ----------------------------------------------------------------------------
 # 2. Série temporal: vento + meteorologia
 # ----------------------------------------------------------------------------
+def _daily_gridlines(ax, df):
+    daily = pd.date_range(
+        df.index.min().normalize(),
+        df.index.max().normalize() + pd.Timedelta("1D"),
+        freq="D",
+    )
+    for d in daily:
+        ax.axvline(d, color="#cccccc", lw=0.5, zorder=0)
+
+
 def plot_time_series(df, report):
-    fig, axes = plt.subplots(3, 1, figsize=(13, 9), sharex=True)
-    heights = [40, 100, 200, 260]
-    colors = {40: "#1f77b4", 100: "#ff7f0e", 200: "#d62728", 260: "#9467bd"}
+    fig, axes = plt.subplots(2, 1, figsize=(13, 8), sharex=True)
 
     ax = axes[0]
-    for h in heights:
-        ax.plot(df.index, df[ws_col(h)].rolling("24h", min_periods=1).mean(),
-                lw=0.9, color=colors[h], label=f"{h} m")
-    ax.set_ylabel("Velocidade média 24 h (m/s)")
-    ax.set_title("Série temporal da velocidade do vento — campanha set/nov 2021")
-    ax.legend(ncol=4)
+    daily_mean = df[[ws_col(h) for h in HEIGHTS]].resample("D").mean()
+    for h in HEIGHTS:
+        ax.plot(daily_mean.index, daily_mean[ws_col(h)], lw=0.9,
+                color=height_color(h), label=f"{h} m")
+    ax.set_ylabel("Velocidade média diária (m/s)")
+    ax.set_title("Média diária da velocidade do vento por altura — campanha set/nov 2021")
+    ax.legend(ncol=5, fontsize=7.5, loc="upper right")
 
     ax = axes[1]
     ax.plot(df.index, df[ws_col(HUB)], lw=0.4, color="#ff7f0e", alpha=0.8)
     ax.set_ylabel("ws100 (m/s)")
     ax.set_title("Velocidade a 100 m (amostras de 10 min)")
 
-    ax = axes[2]
-    ax.plot(df.index, df["temp"], lw=0.8, color="#d62728", label="Temperatura (°C)")
-    ax.plot(df.index, df["humid"], lw=0.8, color="#1b9e77", label="Umidade (%)")
-    ax.set_ylabel("Temp (°C) / Umid (%)")
-    ax.set_title("Meteorologia na torre")
-    ax.legend(ncol=2)
+    for ax in axes:
+        _daily_gridlines(ax, df)
 
     savefig(fig, "02_serie_temporal.png")
     report["ws100_mean"] = float(df[ws_col(HUB)].mean())
@@ -150,6 +155,67 @@ def plot_time_series(df, report):
     report["temp_mean"] = float(df["temp"].mean())
     report["humid_mean"] = float(df["humid"].mean())
     report["press_mean"] = float(df["press"].mean())
+
+
+def plot_meteo_series(df):
+    fig, axes = plt.subplots(2, 1, figsize=(13, 8), sharex=True)
+
+    ax = axes[0]
+    ax.plot(df.index, df["temp"], lw=0.8, color="#d62728", label="Temperatura (°C)")
+    ax.plot(df.index, df["humid"], lw=0.8, color="#1b9e77", label="Umidade (%)")
+    ax.set_ylabel("Temp (°C) / Umid (%)")
+    ax.set_title("Temperatura e umidade na torre")
+    ax.legend(ncol=2)
+
+    ax = axes[1]
+    ax.plot(df.index, df["press"], lw=0.8, color="#7570b3")
+    ax.set_ylabel("Pressão (hPa)")
+    ax.set_title("Pressão atmosférica na torre")
+
+    for ax in axes:
+        _daily_gridlines(ax, df)
+
+    savefig(fig, "02_meteo_torre.png")
+
+
+def plot_vertical_series(df):
+    fig, ax = plt.subplots(figsize=(13, 4.5))
+    ax.plot(df.index, df[v_col(HUB)], lw=0.5, color="#1b9e77", alpha=0.8)
+    ax.axhline(0, color="k", lw=0.5)
+    ax.set_ylabel("v100 (m/s)")
+    ax.set_title("Componente vertical do vento a 100 m (amostras de 10 min)")
+    _daily_gridlines(ax, df)
+    savefig(fig, "02_componente_vertical.png")
+
+
+def plot_direction_series(df):
+    fig, ax = plt.subplots(figsize=(13, 4.5))
+    ax.scatter(df.index, df[dir_col(HUB)], s=2, color="#d95f02", alpha=0.5)
+    ax.set_ylabel("Direção (graus)")
+    ax.set_title("Direção do vento a 100 m (amostras de 10 min)")
+    ax.set_ylim(0, 360)
+    ax.set_yticks([0, 90, 180, 270, 360])
+    ax.set_yticklabels(["0 (N)", "90 (L)", "180 (S)", "270 (O)", "360 (N)"])
+    _daily_gridlines(ax, df)
+    savefig(fig, "02_direcao.png")
+
+
+def plot_day_heights(df):
+    day = "2021-09-21"
+    sub = df.loc[day]
+    heights = HEIGHTS
+
+    fig, ax = plt.subplots(figsize=(13, 6))
+    for h in heights:
+        ax.plot(sub.index, sub[ws_col(h)], lw=0.9, color=height_color(h), label=f"{h} m")
+    ax.set_ylabel("Velocidade (m/s)")
+    ax.set_title(f"Velocidade do vento por altura em {day} (6h–10h)")
+    ax.legend(ncol=5, fontsize=7.5, loc="upper right")
+    hours = pd.date_range(f"{day} 06:00", f"{day} 10:00", freq="10min")
+    ax.set_xticks(hours)
+    ax.set_xticklabels([t.strftime("%H:%M") for t in hours], rotation=45)
+    ax.set_xlim(pd.Timestamp(f"{day} 06:00"), pd.Timestamp(f"{day} 10:00"))
+    savefig(fig, "02b_dia_21_set.png")
 
 
 # ----------------------------------------------------------------------------
@@ -194,10 +260,12 @@ def plot_boxplot(df):
 # ----------------------------------------------------------------------------
 def plot_histograms(df):
     n = len(HEIGHTS)
-    fig, axes = plt.subplots(4, 5, figsize=(15, 10))
+    fig, axes = plt.subplots(4, 5, figsize=(18, 10))
+    fig.subplots_adjust(wspace=0.7, hspace=0.4)
     for ax, h in zip(axes.flat, HEIGHTS):
         vals = df[ws_col(h)].dropna().values
         ax.hist(vals, bins=50, color=height_color(h), alpha=0.85, density=True)
+        ax.set_xlim(2, 17.5)
         ax.set_title(f"{h} m", fontsize=8)
         ax.set_yticks([])
         ax.text(0.97, 0.95, f"média={vals.mean():.2f}\nσ={vals.std():.2f}",
@@ -341,19 +409,24 @@ def plot_monthly(df, report):
 def plot_correlation(df, report):
     cols = [ws_col(h) for h in HEIGHTS]
     corr = df[cols].corr()
+    vmin, vmax = corr.values.min(), corr.values.max()
+    pad = 0.01 * (vmax - vmin)
     fig, ax = plt.subplots(figsize=(8.5, 7.5))
-    im = ax.imshow(corr.values, cmap="RdBu_r", vmin=-1, vmax=1)
+    im = ax.imshow(corr.values, cmap="RdBu_r", vmin=vmin - pad, vmax=vmax + pad)
     ax.set_xticks(range(len(HEIGHTS)))
     ax.set_yticks(range(len(HEIGHTS)))
     ax.set_xticklabels(HEIGHTS, rotation=90, fontsize=7)
     ax.set_yticklabels(HEIGHTS, fontsize=7)
     ax.set_xlabel("Altura (m)")
     ax.set_ylabel("Altura (m)")
-    ax.set_title("Correlação de Pearson entre velocidades por altura")
+    ax.set_title("Correlação de Pearson entre velocidades por altura "
+                 "(escala normalizada)")
     for i in range(len(HEIGHTS)):
         for j in range(len(HEIGHTS)):
             ax.text(j, i, f"{corr.values[i, j]:.2f}", ha="center", va="center", fontsize=5.5)
-    fig.colorbar(im, ax=ax, pad=0.02).set_label("r")
+    cb = fig.colorbar(im, ax=ax, pad=0.02, shrink=0.9)
+    cb.set_label("r (escala normalizada)", fontsize=12)
+    cb.ax.tick_params(labelsize=10)
     savefig(fig, "10_correlacao_alturas.png")
 
     report["corr_ws40_ws100"] = float(df[ws_col(40)].corr(df[ws_col(HUB)]))
@@ -440,11 +513,11 @@ def plot_shear(df, report):
 def plot_dir_speed_vertical(df):
     fig, axes = plt.subplots(1, 2, figsize=(13, 5))
     sub = df[[dir_col(HUB), ws_col(HUB), v_col(HUB)]].dropna()
-    hb = axes[0].hexbin(sub[dir_col(HUB)], sub[ws_col(HUB)], gridsize=50,
+    hb = axes[0].hexbin(sub[ws_col(HUB)], sub[dir_col(HUB)], gridsize=50,
                         cmap="viridis", mincnt=1)
-    axes[0].set_xlabel(f"Direção a {HUB} m (graus)")
-    axes[0].set_ylabel(f"Velocidade a {HUB} m (m/s)")
-    axes[0].set_title("Distribuição conjunta direção × velocidade")
+    axes[0].set_xlabel(f"Velocidade a {HUB} m (m/s)")
+    axes[0].set_ylabel(f"Direção a {HUB} m (graus)")
+    axes[0].set_title("Distribuição conjunta velocidade × direção")
     fig.colorbar(hb, ax=axes[0], pad=0.02).set_label("contagem")
 
     hb2 = axes[1].hexbin(sub[ws_col(HUB)], sub[v_col(HUB)], gridsize=50,
@@ -455,6 +528,86 @@ def plot_dir_speed_vertical(df):
     axes[1].set_title("Movimento vertical vs velocidade horizontal")
     fig.colorbar(hb2, ax=axes[1], pad=0.02).set_label("contagem")
     savefig(fig, "13_direcao_velocidade_vertical.png")
+
+
+def plot_dir_vertical_corr(df, report):
+    sub = df[[dir_col(HUB), v_col(HUB)]].dropna()
+    dirs = sub[dir_col(HUB)].values
+    v = sub[v_col(HUB)].values
+    theta = np.deg2rad(dirs)
+    n = len(sub)
+    r_sin, p_sin = stats.pearsonr(np.sin(theta), v)
+    r_cos, p_cos = stats.pearsonr(np.cos(theta), v)
+
+    fig = plt.figure(figsize=(13, 5))
+    ax_cart = fig.add_subplot(1, 2, 1)
+    ax_pol = fig.add_subplot(1, 2, 2, projection="polar")
+    hb = ax_cart.hexbin(dirs, v, gridsize=50, cmap="plasma", mincnt=1)
+    ax_cart.axhline(0, color="k", lw=0.5)
+    ax_cart.set_xlabel(f"Direção a {HUB} m (graus)")
+    ax_cart.set_ylabel(f"Velocidade vertical a {HUB} m (m/s)")
+    ax_cart.set_title("Componente vertical vs direção (hexbin)")
+    fig.colorbar(hb, ax=ax_cart, pad=0.02).set_label("contagem")
+
+    sec = ((dirs // 22.5).astype("float64") % 16).astype(int)
+    sector_theta = np.deg2rad(np.arange(11.25, 360, 22.5))
+    m = np.array([v[sec == i].mean() for i in range(16)])
+    m = np.nan_to_num(m, nan=0.0)
+    ax_pol.bar(sector_theta, m, width=np.deg2rad(22.5), color="#1b9e77", edgecolor="white")
+    ax_pol.set_theta_zero_location("N")
+    ax_pol.set_theta_direction(-1)
+    ax_pol.set_xticks(np.linspace(0, 2 * np.pi, 8, endpoint=False))
+    ax_pol.set_xticklabels(["N", "NE", "L", "SE", "S", "SO", "O", "NO"])
+    ax_pol.set_title("Velocidade vertical média por setor de direção")
+
+    report["corr_dir100_v100_sin"] = float(r_sin)
+    report["corr_dir100_v100_cos"] = float(r_cos)
+    savefig(fig, "13b_direcao_vertical_corr.png")
+
+
+def plot_dir_sin_cos_corr(df, report):
+    sub = df[[dir_col(HUB), v_col(HUB)]].dropna()
+    dirs = sub[dir_col(HUB)].values
+    v = sub[v_col(HUB)].values
+    theta = np.deg2rad(dirs)
+
+    fig, axes = plt.subplots(1, 2, figsize=(13, 5))
+    pairs = [(np.sin(theta), "sin(direção)", "corr_dir100_v100_sin"),
+             (np.cos(theta), "cos(direção)", "corr_dir100_v100_cos")]
+    for ax, (x, lab, key) in zip(axes, pairs):
+        ax.scatter(x, v, s=1.5, alpha=0.3, color="#1b9e77")
+        m, b = np.polyfit(x, v, 1)
+        xx = np.linspace(x.min(), x.max(), 50)
+        ax.plot(xx, m * xx + b, "r-", lw=1.2)
+        r = float(np.corrcoef(x, v)[0, 1])
+        ax.set_xlabel(lab)
+        ax.set_ylabel("v100 (m/s)")
+        ax.axhline(0, color="k", lw=0.5)
+        ax.set_title(f"v100 × {lab} (r = {r:.3f})")
+        report[key] = r
+    savefig(fig, "13d_dir_sin_cos_corr.png")
+
+
+def plot_ws_vert_dir_corr(df, report):
+    fig, axes = plt.subplots(1, 2, figsize=(13, 5))
+    pairs = [("v", "Velocidade vertical (m/s)"), ("dir", "Direção (graus)")]
+    for ax, (col, lab) in zip(axes, pairs):
+        sub = df[[ws_col(HUB), col + str(HUB)]].dropna()
+        x = sub[col + str(HUB)]
+        y = sub[ws_col(HUB)]
+        ax.scatter(x, y, s=1.5, alpha=0.3, color="#1b9e77")
+        m, b = np.polyfit(x, y, 1)
+        xx = np.linspace(x.min(), x.max(), 50)
+        ax.plot(xx, m * xx + b, "r-", lw=1.2)
+        ax.set_xlabel(lab)
+        ax.set_ylabel("ws100 (m/s)")
+        r = x.corr(y)
+        ax.set_title(f"ws100 × {lab} (r = {r:.3f})")
+        if col == "v":
+            report["corr_ws100_v100"] = float(r)
+        else:
+            report["corr_ws100_dir100"] = float(r)
+    savefig(fig, "13c_ws_vert_dir_corr.png")
 
 
 # ----------------------------------------------------------------------------
@@ -488,26 +641,204 @@ def plot_weibull(df, report):
 # ----------------------------------------------------------------------------
 # 15. Autocorrelação (persistência)
 # ----------------------------------------------------------------------------
-def plot_autocorrelation(df, report):
-    ws = df[ws_col(HUB)].values
-    ws = ws - np.nanmean(ws)
-    valid = ~np.isnan(ws)
-    ws = ws[valid]
-    max_lag = 144  # 24 horas
-    acf = np.array([np.corrcoef(ws[:-l], ws[l:])[0, 1] for l in range(1, max_lag + 1)])
+def _acf(values, max_lag):
+    values = values - np.nanmean(values)
+    valid = ~np.isnan(values)
+    values = values[valid]
+    return np.array([np.corrcoef(values[:-l], values[l:])[0, 1]
+                     for l in range(1, max_lag + 1)])
 
-    fig, ax = plt.subplots(figsize=(10, 4.5))
+
+def _pacf(values, max_lag):
+    values = values - np.nanmean(values)
+    valid = ~np.isnan(values)
+    values = values[valid]
+    pacf = np.empty(max_lag)
+    n = len(values)
+    for lag in range(1, max_lag + 1):
+        x = np.empty((n - lag, lag))
+        for k in range(lag):
+            x[:, k] = values[lag - 1 - k:n - 1 - k]
+        y = values[lag:]
+        coef, *_ = np.linalg.lstsq(x, y, rcond=None)
+        pacf[lag - 1] = coef[-1]
+    return pacf
+
+
+def plot_autocorrelation(df, report):
+    max_lag = 144  # 24 horas
     lags_h = np.arange(1, max_lag + 1) / 6
+    height_step = 20
+    heights = [h for h in HEIGHTS if (h - min(HEIGHTS)) % height_step == 0]
+
+    fig, axes = plt.subplots(2, 1, figsize=(10, 8),
+                             sharex=True, gridspec_kw={"hspace": 0.12})
+
+    ax = axes[0]
+    acf = _acf(df[ws_col(HUB)].values, max_lag)
     ax.bar(lags_h, acf, width=1 / 6, color="#2c7fb8", alpha=0.9)
-    ax.axhline(0, color="k", lw=0.7)
-    for p in [0.5, 1, 2, 4, 8, 24]:
-        ax.axvline(p, color="gray", ls="--", lw=0.6)
-    ax.set_xlabel("Defasagem (horas)")
     ax.set_ylabel("Autocorrelação de ws100")
     ax.set_title("Autocorrelação da velocidade do vento a 100 m (persistência)")
+
+    ax = axes[1]
+    for h in heights:
+        acf_h = _acf(df[ws_col(h)].values, max_lag)
+        ax.plot(lags_h, acf_h, lw=1.2, color=height_color(h),
+                label=f"{h} m")
+    ax.set_xlabel("Defasagem (horas)")
+    ax.set_ylabel("Autocorrelação")
+    ax.set_title("Autocorrelação da velocidade do vento por altura (intervalos de 20 m)")
+    ax.legend(ncol=5, loc="upper right", fontsize=7.5)
+
+    for ax in axes:
+        ax.axhline(0, color="k", lw=0.7)
+        for p in [0.5, 1, 2, 4, 8, 24]:
+            ax.axvline(p, color="gray", ls="--", lw=0.6)
+    axes[1].set_xticks([0, 3, 6, 9, 12, 15, 18, 21, 24])
+
     savefig(fig, "15_autocorrelacao.png")
     for lag_h in [1, 6, 24]:
         report[f"acf_{int(lag_h)}h"] = float(acf[int(lag_h * 6) - 1])
+
+
+def plot_pacf(df, report):
+    max_lag = 144  # 24 horas
+    lags_h = np.arange(1, max_lag + 1) / 6
+    height_step = 20
+    heights = [h for h in HEIGHTS if (h - min(HEIGHTS)) % height_step == 0]
+    ws = df[ws_col(HUB)].values
+    ci = 1.96 / np.sqrt((~np.isnan(ws)).sum())
+
+    fig, axes = plt.subplots(2, 1, figsize=(10, 8),
+                             sharex=True, gridspec_kw={"hspace": 0.12})
+
+    ax = axes[0]
+    pacf = _pacf(ws, max_lag)
+    ax.bar(lags_h, pacf, width=1 / 6, color="#2c7fb8", alpha=0.9)
+    ax.set_ylabel("PACF de ws100")
+    ax.set_title("Autocorrelação parcial (PACF) da velocidade do vento a 100 m")
+
+    ax = axes[1]
+    for h in heights:
+        pacf_h = _pacf(df[ws_col(h)].values, max_lag)
+        ax.plot(lags_h, pacf_h, lw=1.2, color=height_color(h),
+                label=f"{h} m")
+    ax.set_xlabel("Defasagem (horas)")
+    ax.set_ylabel("PACF")
+    ax.set_title("PACF da velocidade do vento por altura (intervalos de 20 m)")
+    ax.legend(ncol=5, loc="upper right", fontsize=7.5)
+
+    for ax in axes:
+        ax.axhline(0, color="k", lw=0.7)
+        ax.axhspan(-ci, ci, color="gray", alpha=0.15, lw=0)
+        for p in [0.5, 1, 2, 4, 8, 24]:
+            ax.axvline(p, color="gray", ls="--", lw=0.6)
+    axes[1].set_xticks([0, 3, 6, 9, 12, 15, 18, 21, 24])
+
+    savefig(fig, "15b_pacf.png")
+
+
+def plot_smoothed_acf_pacf(df, report):
+    max_lag_h = 24
+    lags_h = np.arange(1, max_lag_h + 1)
+    height_step = 20
+    heights = [h for h in HEIGHTS if (h - min(HEIGHTS)) % height_step == 0]
+
+    series = df[ws_col(HUB)].resample("h").mean().dropna()
+    acf = _acf(series.values, max_lag_h)
+    pacf = _pacf(series.values, max_lag_h)
+    ci = 1.96 / np.sqrt(len(series))
+
+    fig, axes = plt.subplots(3, 1, figsize=(10, 12),
+                             sharex=True, gridspec_kw={"hspace": 0.18})
+
+    panels = [
+        (axes[0], acf, "Autocorrelação de ws100 (horária)",
+         "ACF de ws100 em passos de 1 h (t vs t+1h, t+2h, ...)"),
+        (axes[1], pacf, "PACF de ws100 (horária)",
+         "PACF de ws100 em passos de 1 h"),
+    ]
+    for ax, values, ylab, title in panels:
+        ax.bar(lags_h, values, width=0.9, color="#2c7fb8", alpha=0.9, zorder=2)
+        ax.axhline(0, color="k", lw=0.7, zorder=1)
+        ax.axhspan(-ci, ci, color="gray", alpha=0.15, lw=0, zorder=1)
+        for p in [1, 2, 3, 4, 6, 8, 12, 24]:
+            ax.axvline(p, color="gray", ls="--", lw=0.6, zorder=1)
+        ax.set_ylabel(ylab)
+        ax.set_title(title)
+
+    ax = axes[2]
+    for h in heights:
+        s_h = df[ws_col(h)].resample("h").mean().dropna()
+        pacf_h = _pacf(s_h.values, max_lag_h)
+        ax.plot(lags_h, pacf_h, lw=1.2, color=height_color(h), label=f"{h} m")
+    ax.axhline(0, color="k", lw=0.7, zorder=1)
+    ax.axhspan(-ci, ci, color="gray", alpha=0.15, lw=0, zorder=1)
+    for p in [1, 2, 3, 4, 6, 8, 12, 24]:
+        ax.axvline(p, color="gray", ls="--", lw=0.6, zorder=1)
+    ax.set_ylabel("PACF")
+    ax.set_title("PACF horária da velocidade do vento por altura (intervalos de 20 m)")
+    ax.legend(ncol=5, loc="upper right", fontsize=7.5)
+    ax.set_xlabel("Defasagem (horas)")
+    ax.set_xticks([0, 3, 6, 9, 12, 15, 18, 21, 24])
+
+    report["acf_smooth_1h"] = float(acf[1 - 1])
+    report["acf_smooth_6h"] = float(acf[6 - 1])
+    report["pacf_smooth_6h"] = float(pacf[6 - 1])
+
+    savefig(fig, "15d_smoothed_acf_pacf.png")
+
+
+def plot_hourly_pacf(df, report):
+    max_lag_h = 24
+    lags_h = np.arange(1, max_lag_h + 1)
+
+    series = df[ws_col(HUB)].resample("h").mean().dropna()
+    pacf = _pacf(series.values, max_lag_h)
+    ci = 1.96 / np.sqrt(len(series))
+
+    fig, ax = plt.subplots(figsize=(10, 4.5))
+    ax.bar(lags_h, pacf, width=0.9, color="#2c7fb8", alpha=0.9, zorder=2)
+    ax.axhline(0, color="k", lw=0.7, zorder=1)
+    ax.axhspan(-ci, ci, color="gray", alpha=0.15, lw=0, zorder=1)
+    for p in [1, 2, 3, 4, 6, 8, 12, 24]:
+        ax.axvline(p, color="gray", ls="--", lw=0.6, zorder=1)
+    ax.set_ylabel("PACF de ws100 (horária)")
+    ax.set_xlabel("Defasagem (horas)")
+    ax.set_title("PACF de ws100 em passos de 1 h (t vs t+1h, t+2h, ...)")
+    ax.set_xticks([0, 3, 6, 9, 12, 15, 18, 21, 24])
+
+    savefig(fig, "15e_pacf_horaria.png")
+
+
+def plot_diurnal_acf(df, report):
+    max_lag_h = 24
+    series = df[ws_col(HUB)].resample("h").mean().dropna()
+    hour = series.index.hour
+    vals = series.values
+
+    hours = np.arange(24)
+    acf = np.full((len(hours), max_lag_h), np.nan)
+    for i, h in enumerate(hours):
+        mask = np.where(hour == h)[0]
+        for l in range(1, max_lag_h + 1):
+            now_i = mask[mask >= l]
+            prev_i = now_i - l
+            if len(now_i) < 2:
+                continue
+            acf[i, l - 1] = np.corrcoef(vals[now_i], vals[prev_i])[0, 1]
+
+    fig, ax = plt.subplots(figsize=(11, 5))
+    im = ax.imshow(acf.T, aspect="auto", origin="lower", cmap="viridis",
+                   extent=[-0.5, 23.5, 0.5, max_lag_h + 0.5])
+    ax.set_xticks(range(0, 24, 2))
+    ax.set_yticks(range(1, max_lag_h + 1, 3))
+    ax.set_xlabel("Hora do dia")
+    ax.set_ylabel("Defasagem (horas)")
+    ax.set_title("Autocorrelação de ws100 por hora do dia e defasagem")
+    cb = fig.colorbar(im, ax=ax, pad=0.02)
+    cb.set_label("Correlação")
+    savefig(fig, "15c_diurnal_acf.png")
 
 
 # ----------------------------------------------------------------------------
@@ -655,7 +986,14 @@ table{border-collapse:collapse;width:100%;font-size:13px;margin-top:8px}
 th,td{border:1px solid #dfe5ec;padding:5px 9px;text-align:right}
 th{background:#eef3f8;color:#0f3d5e}
 td:first-child{text-align:left;font-weight:600}
+.btn-copy{background:#1b6ca8;color:#fff;border:none;border-radius:6px;padding:6px 12px;font-size:12px;cursor:pointer;margin:8px 0 0;font-family:inherit}
+.btn-copy:hover{background:#0f3d5e}
+.btn-copy:active{opacity:.8}
 .hl{background:#fff7e0;padding:10px 14px;border-left:4px solid #e0a800;border-radius:0 6px 6px 0;font-size:13px;line-height:1.5}
+section ul{margin:8px 0;padding-left:20px}
+section li{margin:7px 0;font-size:13px;line-height:1.55;color:#333}
+section li b{color:#0f3d5e}
+section p{font-size:13px;line-height:1.6;color:#333}
 footer{color:#888;text-align:center;font-size:12px;padding:18px}
 @media(max-width:760px){.two{grid-template-columns:1fr}}
 """
@@ -677,6 +1015,34 @@ def section(title, sub, body, images=()):
             f"{body}{imgs}</section>")
 
 
+def latex_button(latex_source):
+    """Return a 'copiar como LaTeX' button carrying the LaTeX source."""
+    esc = (latex_source.replace("&", "&amp;")
+            .replace('"', "&quot;").replace("<", "&lt;").replace(">", "&gt;"))
+    return (
+        '<button type="button" class="btn-copy" data-latex="'
+        f'{esc}" onclick="copiarLatex(this)">copiar como LaTeX</button>'
+    )
+
+
+def latex_table(columns, rows):
+    """Build (html_table, latex_source) from column headers and row tuples."""
+    head_html = "".join(f"<th>{c}</th>" for c in columns)
+    body_html = "".join(
+        "<tr>" + "".join(f"<td>{cell}</td>" for cell in row) + "</tr>"
+        for row in rows
+    )
+    html_table = f"<table><tr>{head_html}</tr>{body_html}</table>"
+
+    latex = "\\begin{table}[h]\n\\centering\n"
+    latex += "\\begin{tabular}{l" + "c" * (len(columns) - 1) + "}\n"
+    latex += " & ".join(columns) + " \\\\ \\hline\n"
+    for row in rows:
+        latex += " & ".join(str(cell) for cell in row) + " \\\\\n"
+    latex += "\\hline\n\\end{tabular}\n\\caption{...}\n\\end{table}"
+    return html_table, latex
+
+
 def build_html(report):
     n_days = (report["end"] - report["start"]).days
     rows_str = f"{report['rows']:,}".replace(",", ".")
@@ -691,18 +1057,22 @@ def build_html(report):
         card(f"{fmt(report['alpha_mean'])}", "expoente de shear médio"),
     ])
 
-    profile_rows = "".join(
-        f"<tr><td>{h} m</td><td>{fmt(report['profile'][h])} m/s</td></tr>"
+    profile_rows = [
+        (f"{h} m", f"{fmt(report['profile'][h])} m/s")
         for h in HEIGHTS
+    ]
+    profile_table_html, profile_latex = latex_table(
+        ["Altura", "Velocidade média"], profile_rows
     )
-    profile_table = ("<table><tr><th>Altura</th><th>Velocidade média</th></tr>"
-                     f"{profile_rows}</table>")
+    profile_table = latex_button(profile_latex) + profile_table_html
 
-    month_rows = "".join(
-        f"<tr><td>{k}</td><td>{v} m/s</td></tr>" for k, v in report["month_mean"].items()
+    month_rows = [
+        (k, f"{v} m/s") for k, v in report["month_mean"].items()
+    ]
+    month_table_html, month_latex = latex_table(
+        ["Mês", "Velocidade média a 100 m"], month_rows
     )
-    month_table = ("<table><tr><th>Mês</th><th>Velocidade média a 100 m</th></tr>"
-                   f"{month_rows}</table>")
+    month_table = latex_button(month_latex) + month_table_html
 
     missing_str = f"{report['missing_total']:,}".replace(",", ".")
     parts = []
@@ -718,7 +1088,9 @@ def build_html(report):
         f"<b>{fmt(report['ws100_mean'])} m/s</b>, variando de {fmt(report['ws100_min'])} "
         f"a {fmt(report['ws100_max'])} m/s. A campanha cobre apenas os meses de "
         "setembro a novembro de 2021.</div>",
-        images=["images/01_visao_geral.png", "images/02_serie_temporal.png"],
+        images=["images/01_visao_geral.png", "images/02_serie_temporal.png",
+                "images/02_meteo_torre.png", "images/02_componente_vertical.png",
+                "images/02_direcao.png", "images/02b_dia_21_set.png"],
     ))
 
     parts.append(section(
@@ -745,7 +1117,8 @@ def build_html(report):
          f"Ventos calmos (&lt; 0,5 m/s) representam {fmt(report['pct_calm'])} % "
          f"e ventos fortes (&gt; 12 m/s) {fmt(report['pct_strong'])} % das amostras."),
         "",
-        images=["images/06_rosa_dos_ventos.png", "images/13_direcao_velocidade_vertical.png"],
+        images=["images/06_rosa_dos_ventos.png", "images/13_direcao_velocidade_vertical.png",
+                "images/13b_direcao_vertical_corr.png", "images/13d_dir_sin_cos_corr.png"],
     ))
 
     parts.append(section(
@@ -753,9 +1126,12 @@ def build_html(report):
         (f"O movimento vertical médio a 100 m é de {fmt(report['v100_mean'])} m/s "
          f"(σ = {fmt(report['v100_std'])} m/s), com {fmt(report['pct_updraft'])} % "
          "das amostras em ascensão. Valores próximos de zero indicam vento "
-         "predominantemente horizontal, com bolhas de convecção ocasionais."),
+         "predominantemente horizontal, com bolhas de convecção ocasionais. "
+         f"A correlação da velocidade com a componente vertical é r = "
+         f"{fmt(report['corr_ws100_v100'])} e com a direção é r = "
+         f"{fmt(report['corr_ws100_dir100'])}."),
         "",
-        images=["images/07_velocidade_vertical.png"],
+        images=["images/07_velocidade_vertical.png", "images/13c_ws_vert_dir_corr.png"],
     ))
 
     parts.append(section(
@@ -813,7 +1189,9 @@ def build_html(report):
          f"{fmt(report['acf_24h'])} em 24 h. Isso explica o sucesso de modelos "
          "autorregressivos e reforça o valor de janelas de contexto em modelos de previsão."),
         "",
-        images=["images/15_autocorrelacao.png"],
+        images=["images/15_autocorrelacao.png", "images/15b_pacf.png",
+                "images/15c_diurnal_acf.png", "images/15d_smoothed_acf_pacf.png",
+                "images/15e_pacf_horaria.png"],
     ))
 
     parts.append(section(
@@ -857,27 +1235,94 @@ def build_html(report):
         '<img src="images/20_tabela_estatisticas.png" alt="tabela">',
     ))
 
-    html = f"""<!DOCTYPE html>
-<html lang="pt-BR">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>EDA — Dados LiDAR de Vento</title>
-<style>{CSS}</style>
-</head>
-<body>
-<header>
-  <h1>Análise Exploratória — Dados LiDAR de Vento</h1>
-  <p>Perfilador LiDAR · medições de 10 min · alturas {min(HEIGHTS)}–{max(HEIGHTS)} m ·
-     {report['start']:%d/%m/%Y} a {report['end']:%d/%m/%Y}</p>
-</header>
-<div class="container">
-  <div class="cards">{cards}</div>
-  {''.join(parts)}
-</div>
-<footer>Relatório gerado automaticamente por tests/eda_lidar.py</footer>
-</body>
-</html>"""
+    feats = (
+        '<p>As <b>features de entrada</b> dos modelos seq2seq derivam das medições '
+        'LiDAR e meteorológicas aqui analisadas. O embasamento científico para cada '
+        'grupo de variáveis vem da própria EDA:</p>'
+        '<ul>'
+        f'<li><b>Velocidade do vento em múltiplas alturas (ws40–ws260).</b> O '
+        f'perfil vertical cresce monotonicamente (40 m ≈ {fmt(report["ws40_mean"])} m/s, '
+        f'260 m ≈ {fmt(report["ws260_mean"])} m/s), e as alturas são fortemente '
+        f'correlacionadas (r = {fmt(report["corr_ws40_ws100"])} entre 40 e 100 m; '
+        f'r = {fmt(report["corr_ws40_ws260"])} entre 40 e 260 m). A informação do '
+        'perfil completo permite ao modelo inferir a estrutura de cisalhamento '
+        '(expoente α) e generalizar melhor do que usar só o ponto de hub.</li>'
+        f'<li><b>Direção do vento (dir).</b> É uma variável circular; a EDA mostra '
+        'relação fraca mas significativa com a velocidade (r = '
+        f'{fmt(report["corr_ws100_dir100"])}). Por isso a direção é codificada nas '
+        'features como <b>sin(dir)</b> e <b>cos(dir)</b>, eliminando a '
+        'descontinuidade 359°→1° e permitindo que o modelo trate a circularidade '
+        'corretamente (mesma razão pela qual hora e dia do ano são codificados como '
+        'hour_sin/cos e doy_sin/cos).</li>'
+        f'<li><b>Componente vertical (v).</b> Mede a atividade convectiva: a EDA '
+        f'reporta {fmt(report["pct_updraft"])} % das amostras em ascensão, com '
+        f'correlação fraca (r = {fmt(report["corr_ws100_v100"])}) com a velocidade '
+        'horizontal. Agrega contexto físico de turbulência que o vento horizontal '
+        'sozinho não captura.</li>'
+        f'<li><b>Qualidade do sinal (CIS).</b> O carrier-to-noise médio é '
+        f'{fmt(report["cis_mean_overall"])}, com {fmt(report["cis_pct_low"])} % das '
+        'amostras em sinal baixo. Usado como flag de confiabilidade, evita que o '
+        'modelo aprenda com medições degradadas.</li>'
+        f'<li><b>Deslocamentos (disp/vdisp).</b> O disp100 correlaciona '
+        f'{fmt(report["corr_disp100_ws100"])} com a velocidade, indicando instantes '
+        'de medição instável que merecem peso reduzido.</li>'
+        f'<li><b>Meteorologia (temp, humid, press).</b> Correlações com a velocidade '
+        f'a 100 m de {fmt(report["corr_ws100_temp"])} (temp), '
+        f'{fmt(report["corr_ws100_humid"])} (umid) e '
+        f'{fmt(report["corr_ws100_press"])} (press). São covariáveis externas que '
+        'contextualizam o estado atmosférico de larga escala.</li>'
+        f'<li><b>Dinâmica temporal (persistência).</b> A autocorrelação de '
+        f'{fmt(report["acf_1h"])} em 1 h e {fmt(report["acf_6h"])} em 6 h confirma '
+        'forte persistência — o que justifica janelas de contexto (input_steps) '
+        'que alimentem o modelo com o histórico recente.</li>'
+        '<li><b>Denoising por wavelets.</b> A suavização com média horária reduz o '
+        'ruído de alta frequência e evidencia a queda da autocorrelação, melhorando '
+        'a relação sinal-ruído das features sem perder o ciclo diurno.</li>'
+        '</ul>'
+        f'<p>Em conjunto, estas features representam <b>estado do vento no ponto '
+        'de interesse (ws100), estrutura vertical do escoamento, circularidade '
+        'direcional, atividade convectiva e contexto atmosférico externo</b> — '
+        'fundamentos físicos da dinâmica do vento que dão às previsões base '
+        'científica além da simples interpolação estatística da série.</p>'
+    )
+    parts.append(section(
+        "Features criadas e embasamento científico",
+        "Justificativa, a partir da EDA, do uso de cada grupo de variáveis na "
+        "solução de previsão de velocidade do vento.",
+        feats,
+        images=["images/03_perfil_vertical.png", "images/10_correlacao_alturas.png",
+                "images/13d_dir_sin_cos_corr.png", "images/07_velocidade_vertical.png",
+                "images/16_meteorologia.png", "images/15_autocorrelacao.png",
+                "images/02_serie_temporal.png"],
+    ))
+
+    html = (f"<!DOCTYPE html>\n<html lang=\"pt-BR\">\n<head>\n"
+            "<meta charset=\"utf-8\">\n"
+            "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n"
+            f"<title>EDA — Dados LiDAR de Vento</title>\n<style>{CSS}</style>\n"
+            "</head>\n<body>\n<header>\n"
+            "<h1>Análise Exploratória — Dados LiDAR de Vento</h1>\n"
+            f"<p>Perfilador LiDAR · medições de 10 min · alturas {min(HEIGHTS)}–{max(HEIGHTS)} m ·\n"
+            f"   {report['start']:%d/%m/%Y} a {report['end']:%d/%m/%Y}</p>\n"
+            "</header>\n<div class=\"container\">\n"
+            f"<div class=\"cards\">{cards}</div>\n{''.join(parts)}\n"
+            "</div>\n"
+            "<footer>Relatório gerado automaticamente por tests/eda_lidar.py</footer>\n"
+            "<script>\n"
+            "function copiarLatex(btn){\n"
+            "  var latex = btn.getAttribute(\"data-latex\");\n"
+            "  function done(){ btn.textContent = \"copiado!\"; setTimeout(function(){ btn.textContent = \"copiar como LaTeX\"; }, 1500); }\n"
+            "  if(navigator.clipboard && navigator.clipboard.writeText){\n"
+            "    navigator.clipboard.writeText(latex).then(done).catch(function(){ fallback(latex); done(); });\n"
+            "  } else { fallback(latex); done(); }\n"
+            "}\n"
+            "function fallback(text){\n"
+            "  var ta = document.createElement(\"textarea\");\n"
+            "  ta.value = text; document.body.appendChild(ta); ta.select();\n"
+            "  try{ document.execCommand(\"copy\"); }catch(e){}\n"
+            "  document.body.removeChild(ta);\n"
+            "}\n"
+            "</script>\n</body>\n</html>")
     return html
 
 
@@ -899,6 +1344,10 @@ def main():
 
     plot_overview(df, report)
     plot_time_series(df, report)
+    plot_meteo_series(df)
+    plot_vertical_series(df)
+    plot_direction_series(df)
+    plot_day_heights(df)
     plot_vertical_profile(df, report)
     plot_boxplot(df)
     plot_histograms(df)
@@ -910,8 +1359,15 @@ def main():
     plot_scatter_heights(df)
     plot_shear(df, report)
     plot_dir_speed_vertical(df)
+    plot_dir_vertical_corr(df, report)
+    plot_dir_sin_cos_corr(df, report)
+    plot_ws_vert_dir_corr(df, report)
     plot_weibull(df, report)
     plot_autocorrelation(df, report)
+    plot_pacf(df, report)
+    plot_smoothed_acf_pacf(df, report)
+    plot_hourly_pacf(df, report)
+    plot_diurnal_acf(df, report)
     plot_meteo(df, report)
     plot_cis(df, report)
     plot_disp(df, report)

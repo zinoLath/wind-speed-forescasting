@@ -65,6 +65,8 @@ def run(config):
         steps_per_epoch = int((len(train_df) + batch_size - 1) // batch_size)
         wrapper.schedule_total_steps = steps_per_epoch * cfg["epochs"]
     wrapper.loss = cfg.get("loss", "mse")
+    wrapper.gate_mode = cfg.get("gate_mode", "static")
+    wrapper.context_mode = cfg.get("context_mode", "repeat")
 
     wrapper.build(common.FixedHyperParameters(hyperparameters))
     callbacks = common.default_callbacks(wrapper, cfg["patience"])
@@ -96,6 +98,8 @@ def run(config):
         "decoder_mode": getattr(wrapper, "decoder_mode", "teacher_forcing"),
         "target_mode": getattr(wrapper, "target_mode", "absolute"),
         "persistence_gate": bool(getattr(wrapper, "persistence_gate", False)),
+        "gate_mode": getattr(wrapper, "gate_mode", "static"),
+        "context_mode": getattr(wrapper, "context_mode", "repeat"),
         "loss": wrapper.loss,
         "training": {
             "epochs_requested": cfg["epochs"],

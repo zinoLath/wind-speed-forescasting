@@ -40,22 +40,24 @@ class S2SGRUWrapper(Seq2SeqWrapper):
         encoder_gru = GRU(gru_units, return_sequences=True, return_state=True, name='encoder_gru')
         encoder_outputs, state_h = encoder_gru(encoder_x)
 
-        state_h = Concatenate()([state_h])
+        state_h = Concatenate(name='state_h')([state_h])
 
 
-        encoder_outputs = Dropout(encoder_dropout_rate)(encoder_outputs)
+        encoder_outputs = Dropout(encoder_dropout_rate, name='encoder_dropout')(encoder_outputs)
 
         decoder_inputs = Input(shape=(self.output_steps, self.num_decoder_features), name='decoder_inputs')
 
         decoder_gru = GRU(gru_units, return_sequences=True, return_state=True, name='decoder_gru')
         decoder_outputs, _ = decoder_gru(decoder_inputs, initial_state=[state_h])
 
-        decoder_outputs = Dropout(decoder_dropout_rate)(decoder_outputs)
+        decoder_outputs = Dropout(decoder_dropout_rate, name='decoder_dropout')(decoder_outputs)
 
         attention_layer = Attention(name='attention_layer')
         attention_outputs = attention_layer([decoder_outputs, encoder_outputs])
 
-        decoder_combined_context = Concatenate(axis=-1)([decoder_outputs, attention_outputs])
+        decoder_combined_context = Concatenate(
+            axis=-1, name='decoder_combined_context'
+        )([decoder_outputs, attention_outputs])
 
         decoder_dense = TimeDistributed(Dense(1, activation='linear'), name='output_layer')
         decoder_outputs_final = decoder_dense(decoder_combined_context)

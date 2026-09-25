@@ -38,10 +38,17 @@ OUT_BASE = Path("pipeline/tmp/trained_compare")
 
 
 def main():
+    global CONFIG_PATH, OUT_BASE
     parser = argparse.ArgumentParser()
     parser.add_argument("--wrappers", nargs="*", default=None,
                         help="Subset of wrappers to run (default: all).")
+    parser.add_argument("--config", type=Path, default=CONFIG_PATH,
+                        help="Pipeline config file (default: train_tcn_compare).")
+    parser.add_argument("--out-base", type=Path, default=OUT_BASE,
+                        help="Output base dir (default: pipeline/tmp/trained_compare).")
     args = parser.parse_args()
+    CONFIG_PATH = str(args.config)
+    OUT_BASE = args.out_base
     wrappers = args.wrappers or WRAPPERS
     unknown = set(wrappers) - set(WRAPPERS)
     if unknown:

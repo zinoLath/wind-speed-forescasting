@@ -143,6 +143,8 @@ def run(config):
         create_sequences=False,
         persistence_gate=bool(metadata.get("persistence_gate", False)),
     )
+    wrapper.gate_mode = metadata.get("gate_mode", "static")
+    wrapper.context_mode = metadata.get("context_mode", "repeat")
     wrapper.build(common.FixedHyperParameters(metadata["hyperparameters"]))
     wrapper.model.load_weights(model_path)
 

@@ -26,6 +26,9 @@ STAGE = "optuna"
 
 def _run_search(wrapper_key, train_df, val_df, cfg, out_dir):
     from keras import backend as K
+    # TF is already configured (CUDA runtime, memory growth) by the time this
+    # stage runs; importing here keeps the module import side-effect free.
+    import tensorflow as tf
 
     # Data preparation (wavelet denoising, scalers, sequences) does not depend
     # on the trial hyperparameters, so it runs once and is reused by every
@@ -42,6 +45,7 @@ def _run_search(wrapper_key, train_df, val_df, cfg, out_dir):
         persistence_gate=cfg.get("persistence_gate", False),
     )
     wrapper.loss = cfg.get("loss", "mse")
+    wrapper.context_mode = cfg.get("context_mode", "repeat")
     n_train_sequences = wrapper.train["X_encoder"].shape[0]
 
     objective_cfg = cfg.get("objective") or {}
@@ -62,13 +66,23 @@ def _run_search(wrapper_key, train_df, val_df, cfg, out_dir):
             callbacks.append(common.optuna_pruning_callback(trial))
 
         started_at = time.perf_counter()
-        history = wrapper.fit(
-            epochs=cfg["epochs"],
-            batch_size=batch_size,
-            verbose=0,
-            callbacks=callbacks,
-            use_validation=True,
-        )
+        try:
+            history = wrapper.fit(
+                epochs=cfg["epochs"],
+                batch_size=batch_size,
+                verbose=0,
+                callbacks=callbacks,
+                use_validation=True,
+            )
+        except (tf.errors.ResourceExhaustedError, tf.errors.InternalError,
+                MemoryError) as error:
+            # Large sampled configs can exceed the GPU budget mid-training.
+            # Discard the trial instead of killing the whole study.
+            trial.set_user_attr("oom", str(error)[:200])
+            wrapper.model = None
+            gc.collect()
+            K.clear_session()
+            raise optuna.TrialPruned("OOM") from error
         elapsed = time.perf_counter() - started_at
 
         val_losses = history.history.get("val_loss", [])
@@ -85,7 +99,7 @@ def _run_search(wrapper_key, train_df, val_df, cfg, out_dir):
         # robustness is what actually predicts test error.
         val = wrapper.val
         predicted_scaled = wrapper.model.predict(
-            [val["X_encoder"], val["X_decoder"]], batch_size=256, verbose=0
+            [val["X_encoder"], val["X_decoder"]], batch_size=128, verbose=0
         )[:, :, 0]
         actual_scaled = val["y_decoder"][:, :, 0]
         if wrapper.target_mode == "residual":
@@ -141,9 +155,10 @@ def _run_search(wrapper_key, train_df, val_df, cfg, out_dir):
     )
     pruner = optuna.pruners.MedianPruner(n_startup_trials=10, n_warmup_steps=8)
     storage = f"sqlite:///{out_dir / 'optuna.db'}"
+    study_name = cfg.get("study_name", wrapper_key)
     study = optuna.create_study(
         direction="minimize", sampler=sampler, pruner=pruner,
-        storage=storage, study_name=wrapper_key, load_if_exists=True,
+        storage=storage, study_name=study_name, load_if_exists=True,
     )
 
     started_at = time.perf_counter()
@@ -203,7 +218,9 @@ def run(config):
     for wrapper_key in cfg["wrappers"]:
         wrapper_name = common.wrapper_factory(wrapper_key)().name
         out_dir = common.resolve(
-            Path(config["paths"]["tmp_dir"]) / "optuna" / wrapper_name
+            Path(config["paths"]["tmp_dir"])
+            / cfg.get("storage_subdir", "optuna")
+            / wrapper_name
         )
         out_dir.mkdir(parents=True, exist_ok=True)
         print(f"\nOptimizing {wrapper_key} ({wrapper_name})...")
@@ -216,10 +233,17 @@ def main():
     parser = argparse.ArgumentParser(description="Hyperparameter optimization stage.")
     parser.add_argument("--config", type=Path, default=None,
                         help="Path to a pipeline config file.")
+    parser.add_argument("--wrappers", nargs="*", default=None,
+                        help="Subset of wrappers to optimize (overrides config).")
     args = parser.parse_args()
 
     common.ensure_project_root_on_path()
     config = config_module.load_config(args.config)
+    if args.wrappers:
+        unknown = set(args.wrappers) - set(config[STAGE]["wrappers"])
+        if unknown:
+            raise SystemExit(f"Unknown wrappers: {sorted(unknown)}")
+        config[STAGE]["wrappers"] = args.wrappers
     run(config)
 
 
