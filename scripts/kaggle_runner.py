@@ -109,8 +109,29 @@ if progress_zip is not None:
     with zipfile.ZipFile(progress_zip) as z:
         z.extractall(REPO)
 else:
+    # Restaura apenas sqlites da RODADA ATUAL: o dataset acumula progresso de
+    # estudos antigos (optuna_nogate, optuna_round2...), e copia-los para a
+    # pasta desta rodada contaminaria o estudo novo.
+    _cfg_path = REPO / COMMAND.split("--config")[1].split()[0]
+    try:
+        import json as _json
+        with open(_cfg_path, encoding="utf-8") as _h:
+            _study = _json.load(_h).get("optuna", {{}}).get("study_name")
+    except Exception:
+        _study = None
     target = REPO / "pipeline" / "tmp" / PROGRESS_SUBDIR
-    for d in {{p.parent for p in INPUT.rglob("optuna.db")}}:
+    for d in sorted({{p.parent for p in INPUT.rglob("optuna.db")}}):
+        if PROGRESS_SUBDIR not in str(d) or not _study:
+            continue
+        try:
+            import sqlite3 as _sq
+            _con = _sq.connect(d / "optuna.db")
+            _names = [r[0] for r in _con.execute("SELECT study_name FROM studies")]
+            _con.close()
+        except Exception:
+            _names = []
+        if _study not in _names:
+            continue
         print("restaurando progresso (pasta):", d)
         shutil.copytree(d, target / d.name, dirs_exist_ok=True)
 
