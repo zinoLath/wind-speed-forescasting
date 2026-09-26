@@ -95,10 +95,34 @@ else:
             d = d.parent
     if not roots:
         raise FileNotFoundError("pacote do projeto nao encontrado em /kaggle/input")
-    src_root = sorted(roots)[0]
+    # Prefere o repo atual (com o worker desta rodada) sobre snapshots legados
+    # (kaggle_optuna_*, optuna_nogate_v2, ...) que o dataset acumulou.
+    src_root = next(
+        (r for r in sorted(roots)
+         if (r / "scripts" / "kaggle_round2_worker.py").is_file()),
+        sorted(roots)[0],
+    )
     print("repo extraido pelo Kaggle em:", src_root, "-> copiando")
     shutil.copytree(src_root, REPO, dirs_exist_ok=True,
                     ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
+
+# Ultimo recurso: repo incompleto -> clona o publico do GitHub (o kernel tem
+# internet). dataset.csv (gitignored) vem do input.
+if not (REPO / "scripts" / "kaggle_round2_worker.py").is_file():
+    print("repo sem o worker da rodada; clonando do GitHub")
+    import tempfile
+    tmp = REPO.parent / "repo_clone"
+    subprocess.check_call(["git", "clone", "--depth", "1",
+                           "https://github.com/zinoLath/wind-speed-forescasting.git",
+                           str(tmp)])
+    shutil.copytree(tmp, REPO, dirs_exist_ok=True,
+                    ignore=shutil.ignore_patterns("__pycache__", "*.pyc", ".git"))
+if not (REPO / "data" / "dataset.csv").is_file():
+    src_csv = next(INPUT.rglob("dataset.csv"), None)
+    if src_csv is not None:
+        (REPO / "data").mkdir(parents=True, exist_ok=True)
+        shutil.copy2(src_csv, REPO / "data" / "dataset.csv")
+        print("dataset.csv copiado de:", src_csv)
 
 progress_zip = next(
     (z for z in zips if PROGRESS_SUBDIR in z.name and "kaggle_optuna_" not in z.name),
