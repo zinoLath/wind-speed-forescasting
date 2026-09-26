@@ -77,10 +77,10 @@ Seq2Seq wind speed forecasting models (Keras/TensorFlow). All models inherit fro
 
 Model registry lives in `src/common.py:WRAPPERS` with lazy imports; keys: `lstm`, `lstm_bi`, `gru`, `gru_bi`, `lstm_cnn`, `tcn`, `tcn_bi`, `tcn_lstm`, `transformer` (Pre-LN). `validate_wrapper_names()` fails fast on duplicate `.name` values (names double as results-directory names).
 
-- Training loss is configurable per wrapper (`wrapper.loss`; pipeline `loss` config key), default **MSE**.
-- Validation decoder inputs use the inference convention (last observed target repeated), so val_loss/early stopping and the Optuna objective (validation RMSE) measure deployment behaviour.
+- Training loss is the **horizon-weighted MSE** (`src/models/losses.py`), preferring the longer forecast horizons; the pipeline `loss` config key is kept for compatibility but wrappers fix the loss.
+- Decoder inputs use the **direct (deployment-valid) convention** — last observed target + horizon fraction, no teacher forcing and no data leakage — so val_loss/early stopping and the Optuna objective (horizon-weighted MSE over validation blocks) measure deployment behaviour.
 - Headline metrics compare against the RAW `ws100`; denoised-actual metrics are kept as `*_denoised` secondary columns.
-- TCN search space is shared: `src/models/tcn_hp.py:tcn_hyperparameters()`.
+- TCN search space is shared and reduced: `src/models/tcn_hp.py:tcn_hyperparameters()` — a single `filters` value feeds encoder and decoder, no post-block dropout, small kernels (2-3) and shallow dilations. The bidirectional TCN uses a direct last-step encoder→decoder mapping (no context pooling).
 - `src/common.py` is the single source of truth for GPU setup, dataset loading/splitting, hp adapters (`FixedHyperParameters`, `OptunaHyperParameters`), metrics and batched prediction (`predict_all_horizons`). Pipeline stages import it; keep new shared logic there.
 
 Wavelet denoising utility: `src/utils.py:wavelet_denoising()` — uses `sym18` wavelet, default level 2.

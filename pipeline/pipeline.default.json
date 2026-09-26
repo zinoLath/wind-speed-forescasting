@@ -12,7 +12,8 @@
     "train_ratio": 0.75,
     "val_ratio": 0.2,
     "params_source": "optuna",
-    "persistence_gate": true,
+    "decoder_mode": "direct",
+    "persistence_gate": false,
     "hyperparameters": {}
   },
   "paths": {

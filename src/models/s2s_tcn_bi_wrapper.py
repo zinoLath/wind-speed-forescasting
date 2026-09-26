@@ -1,10 +1,8 @@
-import tensorflow as tf
 from tensorflow.keras import backend as K
 from tensorflow.keras.models import Model
 from tensorflow.keras.layers import (
     Input,
     Bidirectional,
-    Dropout,
     Dense,
     Concatenate,
     TimeDistributed,
@@ -17,7 +15,8 @@ from tcn import TCN
 from .seq2seq_wrapper import Seq2SeqWrapper
 from .layers import apply_persistence_gate
 from .s2s_transformer_wrapper import make_learning_rate
-from .tcn_hp import tcn_hyperparameters
+from .tcn_hp import tcn_hyperparameters, TCN_RANGES
+from .losses import horizon_weighted_mse, LOSS_NAME
 
 
 class S2STCNBidirectionalWrapper(Seq2SeqWrapper):
@@ -28,34 +27,33 @@ class S2STCNBidirectionalWrapper(Seq2SeqWrapper):
     def build(self, hp):
         self._require_prepared()
 
-        schedule_mode = hp.Choice('lr_schedule', ['constant', 'warmup_cosine'], default='constant')
-        schedule_steps = getattr(self, 'schedule_total_steps', None) if schedule_mode == 'warmup_cosine' else None
-        self.lr_schedule_mode = schedule_mode
+        self.lr_schedule_mode = "constant"
         learning_rate = make_learning_rate(
-            hp, schedule_total_steps=schedule_steps,
-            lr_min=1e-4, lr_max=1e-2, lr_default=0.003969484893321028,
+            hp, lr_min=1e-4, lr_max=1e-2, lr_default=0.003969484893321028,
         )
-        weight_decay = hp.Choice('weight_decay', [0.0, 1e-5, 1e-4, 1e-3], default=0.0)
-        loss = hp.Choice('loss', ['mse', 'mae', 'huber'], default=getattr(self, 'loss', 'mse'))
-        self.loss = loss
+        weight_decay = hp.Choice('weight_decay', [0.0, 1e-4], default=0.0)
+        loss = horizon_weighted_mse(self.output_steps)
+        self.loss = LOSS_NAME
 
         if weight_decay:
             optimizer = AdamW(learning_rate=learning_rate, weight_decay=weight_decay)
         else:
             optimizer = Adam(learning_rate=learning_rate)
 
+        # A single shared filter count feeds both encoder and decoder.
+        shared_filters = hp.Int(
+            "filters", 32, TCN_RANGES["filters"]["max_filters"], step=16, default=64
+        )
         encoder_tcn_hp = tcn_hyperparameters(
             hp, "encoder", filters=64, kernel_size=2, nb_stacks=1,
             dropout_rate=0.2, dilation_rate=2,
-            min_receptive_field=self.input_steps,
+            min_receptive_field=self.input_steps, filters_value=shared_filters,
         )
         decoder_tcn_hp = tcn_hyperparameters(
-            hp, "decoder", filters=80, kernel_size=2, nb_stacks=2,
+            hp, "decoder", filters=64, kernel_size=2, nb_stacks=2,
             dropout_rate=0.0, dilation_rate=1,
-            min_receptive_field=self.output_steps,
+            min_receptive_field=self.output_steps, filters_value=shared_filters,
         )
-
-        optimizer = Adam(learning_rate=learning_rate)
 
         encoder_inputs = Input(
             shape=(self.input_steps, self.num_encoder_features), name='encoder_inputs'
@@ -74,13 +72,13 @@ class S2STCNBidirectionalWrapper(Seq2SeqWrapper):
             ),
             name='bidirectional_encoder_tcn',
         )(encoder_inputs)
-        encoder_outputs = Dropout(0.1, name='encoder_dropout')(encoder_outputs)
 
         encoder_dim = 2 * encoder_tcn_hp['filters']
 
-        # Mean-pooled encoder summary repeated across decoder steps.
+        # Direct encoder->decoder mapping: the encoder's last step conditions
+        # the decoder, no context pooling.
         encoder_context = Lambda(
-            lambda x: K.mean(x, axis=1), name='encoder_context'
+            lambda x: x[:, -1, :], name='encoder_context'
         )(encoder_outputs)
         encoder_context_repeated = RepeatVector(
             self.output_steps, name='encoder_context_repeated'
@@ -89,28 +87,9 @@ class S2STCNBidirectionalWrapper(Seq2SeqWrapper):
         decoder_inputs = Input(
             shape=(self.output_steps, self.num_decoder_features), name='decoder_inputs'
         )
-
-        # Context injection into the decoder TCN: broadcast to every step
-        # ("repeat", the historical behaviour), not at all ("none"),
-        # or broadcast plus a per-step horizon fraction channel ("horizon").
-        self.context_mode = getattr(self, 'context_mode', 'repeat')
-        if self.context_mode == 'none':
-            decoder_inputs_with_context = decoder_inputs
-        else:
-            decoder_features = [decoder_inputs]
-            if self.context_mode == 'horizon':
-                output_steps = int(self.output_steps)
-                decoder_features.append(Lambda(
-                    lambda x, steps=output_steps: tf.tile(tf.reshape(
-                        tf.linspace(0.0, 1.0, steps), (1, -1, 1)),
-                        [tf.shape(x)[0], 1, 1]),
-                    output_shape=(output_steps, 1),
-                    name='decoder_horizon_channel',
-                )(decoder_inputs))
-            decoder_features.append(encoder_context_repeated)
-            decoder_inputs_with_context = Concatenate(
-                axis=-1, name='decoder_inputs_with_context'
-            )(decoder_features)
+        decoder_inputs_with_context = Concatenate(
+            axis=-1, name='decoder_inputs_with_context'
+        )([decoder_inputs, encoder_context_repeated])
 
         decoder_outputs = TCN(
             nb_filters=decoder_tcn_hp['filters'],
@@ -123,7 +102,6 @@ class S2STCNBidirectionalWrapper(Seq2SeqWrapper):
             return_sequences=True,
             name='decoder_tcn',
         )(decoder_inputs_with_context)
-        decoder_outputs = Dropout(0.1, name='decoder_dropout')(decoder_outputs)
 
         # Project decoder outputs to the encoder dimension before attention.
         decoder_query = Dense(

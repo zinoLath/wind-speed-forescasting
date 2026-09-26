@@ -117,8 +117,9 @@ completo (incluindo o playbook de erros) está na skill `optuna-colab`
 Para cada wrapper configurado em `optuna.wrappers`, roda `n_trials` trials e
 salva o melhor resultado em `pipeline/tmp/optuna/<WrapperName>/`:
 
-- `best_trial.json` — hiperparâmetros vencedores (objetivo: **val RMSE**
-  medido com o decoder de inferência, punindo trial com erros grandes)
+- `best_trial.json` — hiperparâmetros vencedores (objetivo: **MSE por
+  horizonte ponderado** — prefere horizontes mais longos — medido com o
+  decoder de inferência `direct`, sem teacher forcing e sem vazamento)
 - `optuna.db` — storage sqlite do estudo (permite retomar buscas)
 - `trials.csv` — tabela com todos os trials
 
@@ -131,8 +132,9 @@ Treina o wrapper `train.wrapper` com os hiperparâmetros de
 - `explicit`: usa `train.hyperparameters`
 - `default`: usa hiperparâmetros embutidos (fallback)
 
-A função de perda é `train.loss` (padrão `mse`, que pune erros grandes;
-alternativas: `mae`, `huber`) e fica registrada no `model.json`.
+A função de perda é o **MSE por horizonte ponderado** (`horizon_weighted_mse`
+em `src/models/losses.py`), que dá peso crescente aos horizontes mais longos,
+e fica registrada no `model.json`.
 
 Salva em `models/best_model/`:
 

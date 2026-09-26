@@ -15,6 +15,7 @@ from .seq2seq_wrapper import Seq2SeqWrapper
 from .layers import apply_persistence_gate
 from .s2s_transformer_wrapper import make_learning_rate
 from .tcn_hp import tcn_hyperparameters
+from .losses import horizon_weighted_mse, LOSS_NAME
 
 
 class S2STCNLSTMWrapper(Seq2SeqWrapper):
@@ -25,16 +26,13 @@ class S2STCNLSTMWrapper(Seq2SeqWrapper):
     def build(self, hp):
         self._require_prepared()
 
-        schedule_mode = hp.Choice('lr_schedule', ['constant', 'warmup_cosine'], default='constant')
-        schedule_steps = getattr(self, 'schedule_total_steps', None) if schedule_mode == 'warmup_cosine' else None
-        self.lr_schedule_mode = schedule_mode
+        self.lr_schedule_mode = "constant"
         learning_rate = make_learning_rate(
-            hp, schedule_total_steps=schedule_steps,
-            lr_min=1e-4, lr_max=1e-2, lr_default=0.001,
+            hp, lr_min=1e-4, lr_max=1e-2, lr_default=0.001,
         )
-        weight_decay = hp.Choice('weight_decay', [0.0, 1e-5, 1e-4, 1e-3], default=0.0)
-        loss = hp.Choice('loss', ['mse', 'mae', 'huber'], default=getattr(self, 'loss', 'mse'))
-        self.loss = loss
+        weight_decay = hp.Choice('weight_decay', [0.0, 1e-4], default=0.0)
+        loss = horizon_weighted_mse(self.output_steps)
+        self.loss = LOSS_NAME
 
         if weight_decay:
             optimizer = AdamW(learning_rate=learning_rate, weight_decay=weight_decay)
@@ -48,13 +46,11 @@ class S2STCNLSTMWrapper(Seq2SeqWrapper):
         )
 
         lstm_units = hp.Int(
-            'lstm_units', min_value=64, max_value=256, step=32, default=128
+            'lstm_units', min_value=32, max_value=192, step=32, default=128
         )
         decoder_dropout_rate = hp.Float(
-            'decoder_dropout_rate', min_value=0.0, max_value=0.5, step=0.05, default=0.1
+            'decoder_dropout_rate', min_value=0.0, max_value=0.3, step=0.05, default=0.1
         )
-
-        optimizer = Adam(learning_rate=learning_rate)
 
         encoder_inputs = Input(
             shape=(self.input_steps, self.num_encoder_features), name='encoder_inputs'
@@ -70,7 +66,6 @@ class S2STCNLSTMWrapper(Seq2SeqWrapper):
             return_sequences=True,
             name='encoder_tcn',
         )(encoder_inputs)
-        encoder_outputs = Dropout(0.1, name='encoder_dropout')(encoder_outputs)
 
         encoder_dim = encoder_tcn_hp['filters']
 

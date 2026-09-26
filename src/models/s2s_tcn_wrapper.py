@@ -3,7 +3,6 @@ from tensorflow.keras import backend as K
 from tensorflow.keras.models import Model
 from tensorflow.keras.layers import (
     Input,
-    Dropout,
     Dense,
     Concatenate,
     TimeDistributed,
@@ -16,7 +15,8 @@ from tcn import TCN
 from .seq2seq_wrapper import Seq2SeqWrapper
 from .layers import apply_persistence_gate
 from .s2s_transformer_wrapper import make_learning_rate
-from .tcn_hp import tcn_hyperparameters
+from .tcn_hp import tcn_hyperparameters, TCN_RANGES
+from .losses import horizon_weighted_mse, LOSS_NAME
 
 
 class S2STCNWrapper(Seq2SeqWrapper):
@@ -27,40 +27,32 @@ class S2STCNWrapper(Seq2SeqWrapper):
     def build(self, hp):
         self._require_prepared()
 
-        schedule_mode = hp.Choice('lr_schedule', ['constant', 'warmup_cosine'], default='constant')
-        schedule_steps = getattr(self, 'schedule_total_steps', None) if schedule_mode == 'warmup_cosine' else None
-        self.lr_schedule_mode = schedule_mode
+        self.lr_schedule_mode = "constant"
         learning_rate = make_learning_rate(
-            hp, schedule_total_steps=schedule_steps,
-            lr_min=1e-4, lr_max=1e-2, lr_default=0.0026677478212305725,
+            hp, lr_min=1e-4, lr_max=1e-2, lr_default=0.0026677478212305725,
         )
-        weight_decay = hp.Choice('weight_decay', [0.0, 1e-5, 1e-4, 1e-3], default=0.0)
-        loss = hp.Choice('loss', ['mse', 'mae', 'huber'], default=getattr(self, 'loss', 'mse'))
-        self.loss = loss
+        weight_decay = hp.Choice('weight_decay', [0.0, 1e-4], default=0.0)
+        loss = horizon_weighted_mse(self.output_steps)
+        self.loss = LOSS_NAME
 
         if weight_decay:
             optimizer = AdamW(learning_rate=learning_rate, weight_decay=weight_decay)
         else:
             optimizer = Adam(learning_rate=learning_rate)
 
+        # A single shared filter count feeds both encoder and decoder.
+        shared_filters = hp.Int(
+            "filters", 32, TCN_RANGES["filters"]["max_filters"], step=16, default=48
+        )
         encoder_tcn_hp = tcn_hyperparameters(
             hp, "encoder", filters=48, kernel_size=2, nb_stacks=1,
-            dropout_rate=0.45, dilation_rate=4,
-            min_receptive_field=self.input_steps,
+            dropout_rate=0.4, dilation_rate=4,
+            min_receptive_field=self.input_steps, filters_value=shared_filters,
         )
         decoder_tcn_hp = tcn_hyperparameters(
             hp, "decoder", filters=48, kernel_size=2, nb_stacks=1,
             dropout_rate=0.0, dilation_rate=4,
-            min_receptive_field=self.output_steps,
-        )
-        # Post-block dropout rates, searchable like the LSTM wrapper's
-        # encoder/decoder dropout. Defaults keep the historical fixed 0.1 so
-        # older Optuna best_trial.json files stay compatible.
-        encoder_post_dropout_rate = hp.Float(
-            'encoder_post_dropout_rate', min_value=0.0, max_value=0.6, step=0.05, default=0.1
-        )
-        decoder_post_dropout_rate = hp.Float(
-            'decoder_post_dropout_rate', min_value=0.0, max_value=0.6, step=0.05, default=0.1
+            min_receptive_field=self.output_steps, filters_value=shared_filters,
         )
         # How the encoder summary is injected into the decoder: mean pooling
         # over the whole window, the most recent step, or both concatenated.
@@ -84,9 +76,6 @@ class S2STCNWrapper(Seq2SeqWrapper):
             return_sequences=True,
             name='encoder_tcn',
         )(encoder_inputs)
-        encoder_outputs = Dropout(
-            encoder_post_dropout_rate, name='encoder_dropout'
-        )(encoder_outputs)
 
         encoder_dim = encoder_tcn_hp['filters']
 
@@ -145,9 +134,6 @@ class S2STCNWrapper(Seq2SeqWrapper):
             return_sequences=True,
             name='decoder_tcn',
         )(decoder_inputs_with_context)
-        decoder_outputs = Dropout(
-            decoder_post_dropout_rate, name='decoder_dropout'
-        )(decoder_outputs)
 
         # Project the decoder outputs to the encoder dimension so the
         # attention dot-product is well-defined.

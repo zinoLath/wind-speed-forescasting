@@ -13,6 +13,7 @@ from tensorflow.keras.optimizers import Adam, AdamW
 from .seq2seq_wrapper import Seq2SeqWrapper
 from .layers import apply_persistence_gate
 from .s2s_transformer_wrapper import make_learning_rate
+from .losses import horizon_weighted_mse, LOSS_NAME
 
 
 class LearnedPositionalEncoding(tf.keras.layers.Layer):
@@ -103,16 +104,16 @@ class S2STransformerPrelnWrapper(Seq2SeqWrapper):
         schedule_steps = getattr(self, 'schedule_total_steps', None) if schedule_mode == 'warmup_cosine' else None
         self.lr_schedule_mode = schedule_mode
         learning_rate = make_learning_rate(hp, schedule_total_steps=schedule_steps)
-        weight_decay = hp.Choice('weight_decay', [0.0, 1e-5, 1e-4, 1e-3], default=0.0)
-        d_model = hp.Int('d_model', min_value=32, max_value=256, step=16, default=64)
+        weight_decay = hp.Choice('weight_decay', [0.0, 1e-4], default=0.0)
+        d_model = hp.Int('d_model', min_value=32, max_value=192, step=16, default=64)
         num_heads = hp.Int('num_heads', min_value=1, max_value=8, step=1, default=4)
-        num_layers = hp.Int('num_layers', min_value=1, max_value=4, step=1, default=2)
-        ff_dim = hp.Int('ff_dim', min_value=64, max_value=512, step=32, default=128)
+        num_layers = hp.Int('num_layers', min_value=1, max_value=3, step=1, default=2)
+        ff_dim = hp.Int('ff_dim', min_value=64, max_value=384, step=32, default=128)
         dropout_rate = hp.Float(
             'dropout_rate', min_value=0.0, max_value=0.3, step=0.05, default=0.1
         )
-        loss = hp.Choice('loss', ['mse', 'mae', 'huber'], default=getattr(self, 'loss', 'mse'))
-        self.loss = loss
+        loss = horizon_weighted_mse(self.output_steps)
+        self.loss = LOSS_NAME
 
         key_dim = max(1, d_model // num_heads)
 

@@ -43,11 +43,11 @@ def _run_search(wrapper_key, train_df, val_df, cfg, out_dir):
         denoise=cfg["denoise"],
         denoise_level=cfg["denoise_level"],
         features=cfg.get("features"),
+        decoder_mode=cfg.get("decoder_mode", "direct"),
         persistence_gate=cfg.get("persistence_gate", False),
     )
     wrapper.loss = cfg.get("loss", "mse")
     wrapper.context_mode = cfg.get("context_mode", "repeat")
-    n_train_sequences = wrapper.train["X_encoder"].shape[0]
 
     objective_cfg = cfg.get("objective") or {}
     val_blocks = max(1, int(objective_cfg.get("val_blocks", 4)))
@@ -55,12 +55,9 @@ def _run_search(wrapper_key, train_df, val_df, cfg, out_dir):
     def objective(trial):
         K.clear_session()
         hp = common.OptunaHyperParameters(trial)
-        # Sample the batch size first so the LR schedule horizon matches it.
-        batch_size = int(hp.Int("batch_size", 16, 64, step=16))
-        if hasattr(wrapper, "schedule_total_steps"):
-            steps_per_epoch = int(np.ceil(n_train_sequences / batch_size))
-            wrapper.schedule_total_steps = steps_per_epoch * cfg["epochs"]
-        # build() also samples loss / lr_schedule / weight_decay via the trial.
+        # Fixed batch size (search space focus); LR schedules are fixed to
+        # constant inside the wrappers.
+        batch_size = int(cfg.get("batch_size", 32))
         wrapper.build(hp)
         callbacks = common.default_callbacks(wrapper, cfg["patience"])
         if cfg.get("pruning", True):
@@ -126,10 +123,16 @@ def _run_search(wrapper_key, train_df, val_df, cfg, out_dir):
 
         errors = (actuals - predictions).reshape(-1, cfg["output_steps"])
         sequence_indices = np.arange(len(errors))
-        block_mses = [
-            float(np.mean(errors[block] ** 2))
+        # Horizon-weighted MSE: longer horizons count more (matches the
+        # horizon_weighted_mse training loss), so Optuna prefers trials that
+        # are accurate at the far end of the forecast window.
+        from src.models.losses import horizon_weights
+        hw = horizon_weights(cfg["output_steps"])
+        block_hw_mses = [
+            float(np.mean(hw * (errors[block] ** 2)))
             for block in np.array_split(sequence_indices, val_blocks)
         ]
+        val_hw_mse = float(np.mean(hw * (errors ** 2)))
         val_mse = float(np.mean(errors ** 2))
         val_mae = float(np.mean(np.abs(errors)))
         val_rmse = float(np.sqrt(val_mse))
@@ -139,15 +142,16 @@ def _run_search(wrapper_key, train_df, val_df, cfg, out_dir):
         trial.set_user_attr("val_loss", float(np.min(val_losses)))
         trial.set_user_attr("val_mae", val_mae)
         trial.set_user_attr("val_rmse", val_rmse)
-        trial.set_user_attr("val_block_mse", block_mses)
+        trial.set_user_attr("val_block_mse", block_hw_mses)
         trial.set_user_attr("val_mse", val_mse)
+        trial.set_user_attr("val_hw_mse", val_hw_mse)
         print(
-            f"[{wrapper_key}] trial {trial.number} block_mse={np.mean(block_mses):.6f} "
-            f"val_mse={val_mse:.6f} val_rmse={val_rmse:.6f} "
+            f"[{wrapper_key}] trial {trial.number} block_hw_mse={np.mean(block_hw_mses):.6f} "
+            f"val_hw_mse={val_hw_mse:.6f} val_rmse={val_rmse:.6f} "
             f"epochs={trial.user_attrs['train_epochs']} elapsed={elapsed:.1f}s"
         )
         try:
-            return float(np.mean(block_mses))
+            return float(np.mean(block_hw_mses))
         finally:
             # The wrapper is reused across trials and is the only persistent
             # reference to the trained model, so gc_after_trial alone cannot
@@ -197,7 +201,7 @@ def _run_search(wrapper_key, train_df, val_df, cfg, out_dir):
         out_dir / "best_trial.json",
         {
             "wrapper": wrapper_key,
-            "objective": f"val_block_mse(k={val_blocks})",
+            "objective": f"val_block_hw_mse(k={val_blocks})",
             "best_value": study.best_value,
             "best_params": study.best_params,
             "n_trials": len(study.trials),

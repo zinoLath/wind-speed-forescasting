@@ -195,6 +195,13 @@ class FixedHyperParameters:
         self.values = dict(values)
 
     def _get(self, name, default=None):
+        if name == "filters":
+            if "filters" in self.values:
+                return self.values["filters"]
+            if "encoder_filters" in self.values:
+                return self.values["encoder_filters"]
+            if "decoder_filters" in self.values:
+                return self.values["decoder_filters"]
         if name == "encoder_filters" and "filters_power" in self.values:
             return 2 ** int(self.values["filters_power"])
         if name == "decoder_filters" and name not in self.values:
@@ -304,7 +311,7 @@ DEFAULT_HYPERPARAMETERS = {
     },
     "lstm": {
         "learning_rate": 0.001249176597990083,
-        "lstm_units": 256,
+        "lstm_units": 128,
         "encoder_dropout_rate": 0.1,
         "decoder_dropout_rate": 0.1,
         "loss": "mse",
@@ -354,27 +361,26 @@ DEFAULT_HYPERPARAMETERS = {
     },
     "tcn": {
         "learning_rate": 0.001249176597990083,
-        "encoder_filters": 256,
-        "encoder_kernel_size": 3,
+        "filters": 64,
+        "encoder_kernel_size": 2,
         "encoder_nb_stacks": 2,
         "encoder_dropout_rate": 0.2,
-        "encoder_dilation_rate": 4,
-        "decoder_kernel_size": 4,
-        "decoder_nb_stacks": 2,
-        "decoder_dropout_rate": 0.1,
-        "decoder_dilation_rate": 4,
+        "encoder_dilation_rate": 1,
+        "decoder_kernel_size": 2,
+        "decoder_nb_stacks": 1,
+        "decoder_dropout_rate": 0.0,
+        "decoder_dilation_rate": 1,
         "loss": "mse",
         "lr_schedule": "constant",
         "weight_decay": 0.0,
     },
     "tcn_bi": {
         "learning_rate": 0.003969484893321028,
-        "encoder_filters": 64,
+        "filters": 80,
         "encoder_kernel_size": 2,
         "encoder_nb_stacks": 1,
         "encoder_dropout_rate": 0.2,
         "encoder_dilation_rate": 2,
-        "decoder_filters": 80,
         "decoder_kernel_size": 2,
         "decoder_nb_stacks": 2,
         "decoder_dropout_rate": 0.0,
@@ -550,7 +556,6 @@ def predict_all_horizons(wrapper, eval_df):
         decoder_mode=wrapper.decoder_mode,
         target_mode=wrapper.target_mode,
         features=getattr(wrapper, "features", None),
-        decoder_extra=getattr(wrapper, "decoder_extra", None),
     )
     if wrapper.decoder_mode == "teacher_forcing":
         prepared["X_decoder"][:, :, 0] = prepared["X_decoder"][:, :1, 0]

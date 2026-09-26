@@ -142,7 +142,7 @@ def run(config):
         denoise=metadata["denoise"],
         denoise_level=metadata["denoise_level"],
         features=metadata.get("features"),
-        decoder_mode=metadata.get("decoder_mode", "teacher_forcing"),
+        decoder_mode=metadata.get("decoder_mode", "direct"),
         create_sequences=False,
         persistence_gate=bool(metadata.get("persistence_gate", False)),
     )

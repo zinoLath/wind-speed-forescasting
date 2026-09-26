@@ -59,7 +59,7 @@ def run(config):
         denoise=cfg["denoise"],
         denoise_level=cfg["denoise_level"],
         features=cfg.get("features"),
-        decoder_mode=cfg.get("decoder_mode", "teacher_forcing"),
+        decoder_mode=cfg.get("decoder_mode", "direct"),
         persistence_gate=cfg.get("persistence_gate", False),
     )
     # The Optuna search can pick a batch size; explicit config wins otherwise.
@@ -99,7 +99,7 @@ def run(config):
         "denoise": cfg["denoise"],
         "denoise_level": cfg["denoise_level"],
         "features": list(cfg["features"]) if cfg.get("features") else None,
-        "decoder_mode": getattr(wrapper, "decoder_mode", "teacher_forcing"),
+        "decoder_mode": getattr(wrapper, "decoder_mode", "direct"),
         "target_mode": getattr(wrapper, "target_mode", "absolute"),
         "persistence_gate": bool(getattr(wrapper, "persistence_gate", False)),
         "gate_mode": getattr(wrapper, "gate_mode", "static"),
