@@ -73,11 +73,13 @@ REPO.mkdir(parents=True, exist_ok=True)
 # sessoes longas); o mesmo remedio do watchdog local.
 os.environ.setdefault("MALLOC_TRIM_THRESHOLD_", "134217728")
 zips = sorted(INPUT.rglob("*.zip"))
-repo_zip = next(
-    (z for z in zips
-     if "kaggle_optuna_" in z.name or "colab_round2_package_" in z.name),
-    None,
-)
+# Prioriza o pacote atual (colab_round2_package_<data>.zip): o dataset acumula
+# zips legados (kaggle_optuna_*) de versoes anteriores que viriam antes na
+# ordenacao e nao contem o repo/scripts atuais.
+colab_zips = [z for z in zips if "colab_round2_package_" in z.name]
+legacy_zips = [z for z in zips if "kaggle_optuna_" in z.name]
+repo_zip = (sorted(colab_zips)[-1] if colab_zips
+            else (sorted(legacy_zips)[-1] if legacy_zips else None))
 if repo_zip is not None:
     print("repo zip:", repo_zip)
     with zipfile.ZipFile(repo_zip) as z:
