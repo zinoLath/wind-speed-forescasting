@@ -37,7 +37,8 @@ def run(config):
     hyperparameters, params_source = common.resolve_hyperparameters(wrapper_key, cfg, config)
     print(f"[{wrapper_key}] hyperparameters source: {params_source}")
 
-    dataset = common.load_dataset(common.resolve(config["paths"]["dataset_csv"]))
+    dataset = common.load_dataset(common.resolve(config["paths"]["dataset_csv"]),
+                                  keep_raw=tuple(cfg.get("denoise", ())))
     train_ratio = cfg.get("train_ratio", 0.75)
     val_ratio = cfg.get("val_ratio", 0.20)
     train_df, val_df, test_df = common.split_dataset(dataset, train_ratio, val_ratio)
@@ -57,6 +58,8 @@ def run(config):
         target_col=cfg["target_col"],
         denoise=cfg["denoise"],
         denoise_level=cfg["denoise_level"],
+        features=cfg.get("features"),
+        decoder_mode=cfg.get("decoder_mode", "teacher_forcing"),
         persistence_gate=cfg.get("persistence_gate", False),
     )
     # The Optuna search can pick a batch size; explicit config wins otherwise.
@@ -95,6 +98,7 @@ def run(config):
         "target_col": cfg["target_col"],
         "denoise": cfg["denoise"],
         "denoise_level": cfg["denoise_level"],
+        "features": list(cfg["features"]) if cfg.get("features") else None,
         "decoder_mode": getattr(wrapper, "decoder_mode", "teacher_forcing"),
         "target_mode": getattr(wrapper, "target_mode", "absolute"),
         "persistence_gate": bool(getattr(wrapper, "persistence_gate", False)),

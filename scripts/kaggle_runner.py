@@ -61,6 +61,7 @@ WORK = Path("/kaggle/working")
 REPO = WORK / "wind-speed-forecasting"
 COMMAND = {command!r}
 OUTPUT_GLOB = {output_glob!r}
+PROGRESS_SUBDIR = {progress_subdir!r}
 
 print("Conteudo de /kaggle/input:")
 for p in sorted(INPUT.rglob("*")):
@@ -72,7 +73,11 @@ REPO.mkdir(parents=True, exist_ok=True)
 # sessoes longas); o mesmo remedio do watchdog local.
 os.environ.setdefault("MALLOC_TRIM_THRESHOLD_", "134217728")
 zips = sorted(INPUT.rglob("*.zip"))
-repo_zip = next((z for z in zips if "kaggle_optuna_" in z.name), None)
+repo_zip = next(
+    (z for z in zips
+     if "kaggle_optuna_" in z.name or "colab_round2_package_" in z.name),
+    None,
+)
 if repo_zip is not None:
     print("repo zip:", repo_zip)
     with zipfile.ZipFile(repo_zip) as z:
@@ -94,7 +99,7 @@ else:
                     ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
 
 progress_zip = next(
-    (z for z in zips if "optuna_nogate" in z.name and "kaggle_optuna_" not in z.name),
+    (z for z in zips if PROGRESS_SUBDIR in z.name and "kaggle_optuna_" not in z.name),
     None,
 )
 if progress_zip is not None:
@@ -102,7 +107,7 @@ if progress_zip is not None:
     with zipfile.ZipFile(progress_zip) as z:
         z.extractall(REPO)
 else:
-    target = REPO / "pipeline" / "tmp" / "optuna_nogate"
+    target = REPO / "pipeline" / "tmp" / PROGRESS_SUBDIR
     for d in {{p.parent for p in INPUT.rglob("optuna.db")}}:
         print("restaurando progresso (pasta):", d)
         shutil.copytree(d, target / d.name, dirs_exist_ok=True)
@@ -234,6 +239,7 @@ def cmd_push(args):
     script = KERNEL_TEMPLATE.format(
         command=args.command,
         output_glob=args.output_glob,
+        progress_subdir=getattr(args, "progress_subdir", "optuna_nogate"),
     )
     script_path = kernel_dir / f"{args.slug}.py"
     script_path.write_text(script, encoding="utf-8")
@@ -283,14 +289,15 @@ def cmd_output(args):
     if result.returncode != 0:
         raise SystemExit(result.returncode)
     print("arquivos baixados em", dest)
-    for progress_zip in sorted(dest.glob("optuna_nogate*.zip")):
+    pattern = getattr(args, "pattern", None) or "optuna_nogate*"
+    for progress_zip in sorted(dest.glob(pattern + ".zip")):
         if args.restore:
             print("restaurando progresso local:", progress_zip, "->", PROJECT_ROOT)
             with zipfile.ZipFile(progress_zip) as z:
                 z.extractall(PROJECT_ROOT)
         else:
             print(f"progresso disponivel em {progress_zip} (use --restore para"
-                  " aplica-lo em pipeline/tmp/optuna_nogate*)")
+                  f" aplica-lo em pipeline/tmp/{pattern.rstrip('*')}*)")
 
 
 def cmd_run_all(args):
@@ -342,6 +349,8 @@ def main():
     p.add_argument("--title", default=None)
     p.add_argument("--output-glob", default=DEFAULT_OUTPUT_GLOB,
                    help="arquivo/pasta zipeado de volta no output")
+    p.add_argument("--progress-subdir", default="optuna_nogate",
+                   help="subdir de pipeline/tmp restaurado dos inputs")
     p.add_argument("--dry-run", action="store_true")
     p.set_defaults(func=cmd_push)
 
@@ -353,7 +362,9 @@ def main():
     p.add_argument("--slug", required=True)
     p.add_argument("--dest", default=str(DIST / "kaggle_output"))
     p.add_argument("--restore", action="store_true",
-                   help="restaura optuna_nogate em pipeline/tmp")
+                   help="restaura o progresso em pipeline/tmp")
+    p.add_argument("--pattern", default="optuna_nogate*",
+                   help="glob dos zips de progresso no output (ex.: optuna_round2*)")
     p.set_defaults(func=cmd_output)
 
     p = sub.add_parser("run-all", help="pacote + dataset + push + espera + output")

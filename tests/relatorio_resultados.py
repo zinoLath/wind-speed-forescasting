@@ -43,6 +43,23 @@ OUT_DIR = PROJECT_ROOT / "data" / "results" / "report"
 IMG_DIR = OUT_DIR / "images"
 HISTORY_CACHE = OUT_DIR / "training_history.json"
 EVAL_CACHE = OUT_DIR / "evaluation.json"
+BASELINES_DIR = PROJECT_ROOT / "data" / "results" / "baselines" / "arima_rf"
+BASELINE_STYLE = {
+    "arima": ("ARIMA", "#7f7f7f"),
+    "rf": ("Random Forest", "#8c564b"),
+    "persistence": ("Persistência", "#b0b0b0"),
+}
+
+
+def load_baselines():
+    """Métricas dos baselines estatísticos (geradas por tests/baseline_arima_rf.py)."""
+    if not (BASELINES_DIR / "metrics.json").is_file():
+        return None
+    out = {"metrics": json.load(open(BASELINES_DIR / "metrics.json"))}
+    ph = BASELINES_DIR / "per_horizon_metrics.csv"
+    if ph.is_file():
+        out["per_horizon"] = pd.read_csv(ph)
+    return out
 
 FOCUS_KEYS = ("lstm", "lstm_bi", "tcn", "tcn_bi")
 SEED = 42
@@ -158,7 +175,7 @@ def load_metadata(base_dir=None):
     return models
 
 
-def build_wrapper(meta, train_df, val_df, model_path):
+def build_wrapper(meta, train_df, val_df, model_path, require_weights=True):
     from keras import backend as K
 
     K.clear_session()
@@ -171,6 +188,7 @@ def build_wrapper(meta, train_df, val_df, model_path):
         target_col=meta["target_col"],
         denoise=meta["denoise"],
         denoise_level=meta["denoise_level"],
+        features=meta.get("features"),
         create_sequences=False,
         persistence_gate=bool(meta.get("persistence_gate", False)),
         decoder_mode=meta.get("decoder_mode", "teacher_forcing"),
@@ -179,7 +197,14 @@ def build_wrapper(meta, train_df, val_df, model_path):
     wrapper.gate_mode = meta.get("gate_mode", "static")
     wrapper.context_mode = meta.get("context_mode", "repeat")
     wrapper.build(common.FixedHyperParameters(meta["hyperparameters"]))
-    wrapper.model.load_weights(model_path)
+    try:
+        wrapper.model.load_weights(model_path)
+    except ValueError as error:
+        if require_weights:
+            raise
+        # Diagramas de arquitetura dependem apenas da estrutura; modelos
+        # antigos (ex.: trained_compare_nogate) podem ter shapes incompatíveis.
+        print(f"  aviso: pesos de {model_path} nao carregados ({error})")
     return wrapper
 
 
@@ -193,6 +218,7 @@ def timed_inference(wrapper, test_df):
         scaler_other=wrapper.scaler_other,
         denoise=wrapper.denoise,
         decoder_mode=wrapper.decoder_mode,
+        features=getattr(wrapper, "features", None),
         target_mode=wrapper.target_mode,
     )
     if wrapper.decoder_mode == "teacher_forcing":
@@ -364,6 +390,7 @@ def retrain_history(dataset, force=False):
             target_col=meta["target_col"],
             denoise=meta["denoise"],
             denoise_level=meta["denoise_level"],
+            features=meta.get("features"),
             persistence_gate=bool(meta.get("persistence_gate", False)),
         )
         batch_size = int(meta["training"]["batch_size"])
@@ -424,7 +451,8 @@ def export_architectures(dataset, base_dir=None):
             dataset, ratios.get("train_ratio", 0.75), ratios.get("val_ratio", 0.20)
         )
         print(f"[{meta['wrapper_key']}] exportando diagrama de arquitetura ...")
-        wrapper = build_wrapper(meta, train_df, val_df, entry["dir"] / "model.keras")
+        wrapper = build_wrapper(meta, train_df, val_df, entry["dir"] / "model.keras",
+                                require_weights=False)
         out = IMG_DIR / f"15_arquitetura_{meta['wrapper_key']}.png"
         tf.keras.utils.plot_model(
             wrapper.model,
@@ -499,15 +527,29 @@ def plot_split_timeline(dataset, recs):
     savefig(fig, "01_split_temporal.png")
 
 
-def plot_comparison_bars(recs):
+def plot_comparison_bars(recs, baselines=None):
     names = [r["short"] for r in recs]
     mse = [r["all"]["mse"] for r in recs]
     rmse = [r["all"]["rmse"] for r in recs]
     colors = [r["color"] for r in recs]
-    y = np.arange(len(recs))
+    hatches = [""] * len(recs)
+    if baselines:
+        for key in ("arima", "rf"):
+            m = baselines["metrics"].get(key)
+            if not m:
+                continue
+            label, color = BASELINE_STYLE[key]
+            names.append(f"{label} (baseline)")
+            mse.append(m["all_horizons"]["mse"])
+            rmse.append(m["all_horizons"]["rmse"])
+            colors.append(color)
+            hatches.append("//")
+    y = np.arange(len(names))
 
-    fig, axes = plt.subplots(1, 2, figsize=(13, 4.4))
+    fig, axes = plt.subplots(1, 2, figsize=(13, 4.4 + 0.4 * len(hatches)))
     axes[0].barh(y, mse, color=colors)
+    for bar, h in zip(axes[0].containers[0], hatches):
+        bar.set_hatch(h)
     for yi, v in zip(y, mse):
         axes[0].text(v, yi, f" {v:.3f}", va="center", fontsize=8.5)
     axes[0].set_yticks(y, names)
@@ -517,6 +559,10 @@ def plot_comparison_bars(recs):
     axes[0].set_xlim(0, max(mse) * 1.22)
 
     axes[1].barh(y, rmse, color=colors)
+    for bar, h in zip(axes[1].containers[0], hatches):
+        bar.set_hatch(h)
+    for bar, h in zip(axes[0].containers[0], hatches):
+        bar.set_hatch(h)
     for yi, v in zip(y, rmse):
         axes[1].text(v, yi, f" {v:.3f}", va="center", fontsize=8.5)
     axes[1].set_yticks(y, names)
@@ -527,31 +573,55 @@ def plot_comparison_bars(recs):
     savefig(fig, "02_comparacao_mse_rmse.png")
 
 
-def plot_skill(recs):
+def plot_skill(recs, baselines=None):
     names = [r["short"] for r in recs]
     colors = [r["color"] for r in recs]
-    y = np.arange(len(recs))
+    hatches = [""] * len(recs)
+    if baselines:
+        for key in ("arima", "rf"):
+            m = baselines["metrics"].get(key)
+            if not m:
+                continue
+            label, color = BASELINE_STYLE[key]
+            names.append(f"{label} (baseline)")
+            colors.append(color)
+            hatches.append("//")
+    y = np.arange(len(names))
     w = 0.38
 
-    fig, axes = plt.subplots(1, 2, figsize=(13, 4.4))
-    mse = [r["all"]["mse"] for r in recs]
+    def _vals(regime):
+        vals = [r[regime]["mse"] for r in recs]
+        r2s = [r[regime]["r2"] for r in recs]
+        if baselines:
+            src_key = "all_horizons" if regime == "all" else regime
+            for key in ("arima", "rf"):
+                m = baselines["metrics"].get(key)
+                if m:
+                    vals.append(m[src_key]["mse"])
+                    r2s.append(m[src_key]["r2"])
+        return vals, r2s
+
+    fig, axes = plt.subplots(1, 2, figsize=(13, 4.4 + 0.4 * len(names)))
+    mse, _ = _vals("all")
     axes[0].barh(y - w / 2, mse, height=w, color=colors, label="todos horizontes")
-    mse_roll = [r["rolling"]["mse"] for r in recs]
+    mse_roll, _ = _vals("rolling")
     axes[0].barh(y + w / 2, mse_roll, height=w, color=colors, alpha=0.45,
                  hatch="//", label="rolling (h=36)")
     for yi, v in zip(y, mse):
         axes[0].text(v, yi - w / 2, f" {v:.3f}", va="center", fontsize=8)
     for yi, v in zip(y, mse_roll):
         axes[0].text(v, yi + w / 2, f" {v:.3f}", va="center", fontsize=8)
+    for bar, h in zip(axes[0].containers[0], hatches):
+        bar.set_hatch(h)
     axes[0].set_yticks(y, names)
     axes[0].invert_yaxis()
     axes[0].set_xlabel("MSE ((m/s)²)")
     axes[0].set_title("MSE (vs ws100 bruto)")
     axes[0].legend(loc="lower right")
 
-    r2 = [r["all"]["r2"] for r in recs]
+    _, r2 = _vals("all")
     axes[1].barh(y - w / 2, r2, height=w, color=colors, label="todos horizontes")
-    r2_roll = [r["rolling"]["r2"] for r in recs]
+    _, r2_roll = _vals("rolling")
     axes[1].barh(y + w / 2, r2_roll, height=w, color=colors, alpha=0.45,
                  hatch="//", label="rolling (h=36)")
     for yi, v in zip(y, r2):
@@ -619,7 +689,7 @@ def plot_radar(recs):
     savefig(fig, "04_radar.png")
 
 
-def plot_per_horizon(recs, extras):
+def plot_per_horizon(recs, extras, baselines=None):
     variants = [
         ("per_horizon", "05_mae_por_horizonte_real.png",
          "MAE vs dado real (ws100 bruto)"),
@@ -632,6 +702,14 @@ def plot_per_horizon(recs, extras):
             ph = extras[r["name"]][key]
             ax.plot(ph["horizon"], ph["mae"], color=r["color"], lw=1.7,
                     marker="o", ms=2.6, label=r["short"])
+        if baselines and "per_horizon" in baselines:
+            bh = baselines["per_horizon"]
+            ax.plot(bh["horizon"], bh["persistence_mae"], color=BASELINE_STYLE["persistence"][1],
+                    lw=1.2, ls=":", label="Persistência (baseline)")
+            ax.plot(bh["horizon"], bh["arima_mae"], color=BASELINE_STYLE["arima"][1],
+                    lw=1.4, ls="--", label="ARIMA (baseline)")
+            ax.plot(bh["horizon"], bh["rf_mae"], color=BASELINE_STYLE["rf"][1],
+                    lw=1.4, ls="--", label="Random Forest (baseline)")
         ax.set_xlabel("Horizonte (passos de 10 min)")
         ax.set_ylabel("MAE (m/s)")
         ax.set_title(f"MAE por horizonte de previsão — {title}")
@@ -639,27 +717,36 @@ def plot_per_horizon(recs, extras):
         ax.grid(alpha=0.3)
         sec = ax.secondary_xaxis("top", functions=(lambda x: x / 6, lambda x: x * 6))
         sec.set_xlabel("Horizonte (horas)")
-        ax.legend(ncol=2)
+        ax.legend(ncol=2, fontsize=8)
         savefig(fig, fname)
 
 
-def plot_horizon_heatmap(recs, extras):
+def plot_horizon_heatmap(recs, extras, baselines=None):
     mses = []
+    labels = [r["short"] for r in recs]
     for r in recs:
         ph = extras[r["name"]]["per_horizon"]
         mses.append(ph["mse"].to_numpy())
+    if baselines and "per_horizon" in baselines:
+        bh = baselines["per_horizon"]
+        for mae_col, rmse_col, label in (("arima_mae", "arima_rmse", "ARIMA"),
+                                         ("rf_mae", "rf_rmse", "Random Forest"),
+                                         ("persistence_mae", "persistence_rmse",
+                                          "Persistência")):
+            mses.append((bh[rmse_col] ** 2).to_numpy())
+            labels.append(f"{label} (baseline)")
     mat = np.vstack(mses)
 
-    fig, ax = plt.subplots(figsize=(13, 4.2))
+    fig, ax = plt.subplots(figsize=(13, 4.2 + 0.35 * len(labels)))
     im = ax.imshow(mat, aspect="auto", cmap="RdYlGn_r",
                    vmin=float(mat.min()), vmax=float(mat.max()),
                    interpolation="nearest")
-    ax.set_yticks(range(len(recs)), [r["short"] for r in recs])
+    ax.set_yticks(range(len(labels)), labels)
     ax.set_xticks(range(0, 36, 2), [str(h) for h in range(1, 37, 2)])
     ax.set_xlabel("Horizonte (passos de 10 min)")
     ax.set_title("MSE ((m/s)²) por modelo e horizonte (verde = menor erro)")
     for j in [0, 5, 11, 17, 23, 29, 35]:
-        for i in range(len(recs)):
+        for i in range(len(labels)):
             v = mat[i, j]
             ax.text(j, i, f"{v:.2f}", ha="center", va="center",
                     fontsize=7.5, color="black",
@@ -1338,7 +1425,7 @@ def build_html(recs, history, dataset_info, hz_stats, arch_records, extras, data
          "autônoma: LSTM simples lidera a avaliação densa, enquanto as arquiteturas "
          "convolucionais temporais (TCN) sofrem mais na extrapolação autônoma."),
         results_table,
-        images=[("02_comparacao_mse_rmse.png", "MSE e RMSE por modelo (todos os horizontes)"),
+        images=[("02_comparacao_mse_rmse.png", "MSE e RMSE por modelo e baselines (todos os horizontes)"),
                 ("03_mse_r2.png", "MSE e R² por modelo (todos os horizontes e rolling)"),
                 ("04_radar.png", "Perfil normalizado: erro, rolling, tamanho e custo")],
     ))
@@ -1387,8 +1474,8 @@ def build_html(recs, history, dataset_info, hz_stats, arch_records, extras, data
          "separam nos horizontes longos, exatamente onde a extrapolação autônoma "
          "distingue as arquiteturas."),
         "",
-        images=[("05_mae_por_horizonte_real.png", "MAE por horizonte — vs dado real (bruto)"),
-                ("05_mae_por_horizonte_wavelet.png", "MAE por horizonte — vs alvo wavelet (nível treinado)"),
+        images=[("05_mae_por_horizonte_real.png", "MAE por horizonte — vs dado real, com baselines"),
+                ("05_mae_por_horizonte_wavelet.png", "MAE por horizonte — vs alvo wavelet, com baselines"),
                 ("06_heatmap_mse_horizonte.png",
                  "Heatmap de MSE ((m/s)²) por modelo e horizonte — verde = menor erro"),
                 ("07_fan_chart.png",
@@ -1602,7 +1689,8 @@ def main():
 
     IMG_DIR.mkdir(parents=True, exist_ok=True)
 
-    dataset = common.load_dataset(DATA_FILE)
+    dataset = common.load_dataset(DATA_FILE,
+                                  keep_raw=("ws40", "ws100", "v40"))
     print(f"Dataset: {len(dataset)} linhas | {dataset.index.min()} a {dataset.index.max()}")
 
     results, extras = evaluate_models(dataset)
@@ -1620,13 +1708,16 @@ def main():
         history = retrain_history(dataset, force=args.retrain)
 
     recs = sorted(results.values(), key=lambda r: r["all"]["mse"])
+    baselines = load_baselines()
+    if baselines:
+        print("Baselines estatísticos carregados: ARIMA, Random Forest, Persistência")
 
     plot_split_timeline(dataset, recs)
-    plot_comparison_bars(recs)
-    plot_skill(recs)
+    plot_comparison_bars(recs, baselines)
+    plot_skill(recs, baselines)
     plot_radar(recs)
-    plot_per_horizon(recs, extras)
-    plot_horizon_heatmap(recs, extras)
+    plot_per_horizon(recs, extras, baselines)
+    plot_horizon_heatmap(recs, extras, baselines)
     plot_fan(recs, extras, dataset)
     plot_rolling(recs, extras)
     plot_best_diagnostics(recs[0], extras)

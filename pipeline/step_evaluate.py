@@ -121,7 +121,8 @@ def run(config):
     wrapper_class = common.wrapper_factory(wrapper_key)
     print(f"Evaluating {metadata['model_class']} ({model_path.name})")
 
-    dataset = common.load_dataset(common.resolve(config["paths"]["dataset_csv"]))
+    dataset = common.load_dataset(common.resolve(config["paths"]["dataset_csv"]),
+                                  keep_raw=tuple(metadata["denoise"]))
     train_ratio = metadata["dataset"].get("train_ratio", 0.75)
     val_ratio = metadata["dataset"].get("val_ratio", 0.20)
     train_df, val_df, test_df = common.split_dataset(dataset, train_ratio, val_ratio)
@@ -140,6 +141,8 @@ def run(config):
         target_col=metadata["target_col"],
         denoise=metadata["denoise"],
         denoise_level=metadata["denoise_level"],
+        features=metadata.get("features"),
+        decoder_mode=metadata.get("decoder_mode", "teacher_forcing"),
         create_sequences=False,
         persistence_gate=bool(metadata.get("persistence_gate", False)),
     )

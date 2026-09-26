@@ -93,6 +93,8 @@ dmypy.json
 # PyTorch specific
 *.pt
 *.pth
+*.ckpt
+/checkpoints/
 
 # Data folders (uncomment if needed)
 /data/

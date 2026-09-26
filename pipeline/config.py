@@ -60,4 +60,7 @@ def load_config(path=None):
     if user_path.is_file():
         with open(user_path, encoding="utf-8") as handle:
             config = _deep_merge(config, json.load(handle))
+    elif path:
+        # um --config explicito inexistente tem que falhar, nao cair no default
+        raise FileNotFoundError(f"Config explicito nao encontrado: {user_path}")
     return _inherit_common(config)

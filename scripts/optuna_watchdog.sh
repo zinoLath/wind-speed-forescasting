@@ -20,10 +20,17 @@ cd "$PROJECT_ROOT"
 CONFIG="${1:-pipeline/pipeline.optuna_tcn_aggressive.json}"
 [ $# -gt 0 ] && shift
 WRAPPER_ARGS=("$@")
-MAX_USED_GB="${MAX_USED_GB:-40}"
 POLL_SECS="${POLL_SECS:-5}"
 LOG="${LOG:-pipeline/tmp/optuna_watchdog.log}"
 FAIL_ORPHANS="${FAIL_ORPHANS:-1}"
+RAM_FRAC="${RAM_FRAC:-0.85}"
+
+# Limite de RAM calibrado pelo ambiente de execucao: 85% da MemTotal quando
+# MAX_USED_GB nao vem do ambiente (Colab/Kaggle usam fracoes proprias; o
+# worker Kaggle calibra em scripts/kaggle_round2_worker.py).
+if [ -z "${MAX_USED_GB:-}" ]; then
+    MAX_USED_GB=$(awk '/^MemTotal/ {printf "%.1f", $2 / 1024 / 1024 * '"$RAM_FRAC"'}' /proc/meminfo)
+fi
 
 mkdir -p "$(dirname "$LOG")"
 source .venv/bin/activate

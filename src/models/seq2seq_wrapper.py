@@ -2,7 +2,25 @@
 from numpy.lib.stride_tricks import sliding_window_view
 from sklearn.preprocessing import MinMaxScaler
 import numpy as np
+import pandas as pd
 from ..utils import wavelet_denoising
+
+
+def cyclic_extras_from_index(index):
+    """RAW hour/day sin-cos (n, 4) matching common.add_cyclic_features."""
+    minutes = index.hour * 60 + index.minute
+    hour_angle = 2 * np.pi * minutes / (24 * 60)
+    day_angle = 2 * np.pi * index.dayofweek / 7.0
+    return np.stack([np.sin(hour_angle), np.cos(hour_angle),
+                     np.sin(day_angle), np.cos(day_angle)], axis=1)
+
+
+def positional_channels(output_steps):
+    """Sinusoidal positional encoding (output_steps, 4) for decoder steps."""
+    k = np.arange(1, output_steps + 1, dtype=np.float32)
+    return np.stack([np.sin(k / 10.0), np.cos(k / 10.0),
+                     np.sin(k / 100.0), np.cos(k / 100.0)], axis=1)
+
 
 class Seq2SeqWrapper:
 
@@ -30,18 +48,23 @@ class Seq2SeqWrapper:
         decoder_mode="teacher_forcing",
         target_mode="absolute",
         persistence_gate=False,
+        decoder_extra=None,
+        time_extras=None,
     ):
         """
         Create encoder/decoder/target sequences for the Seq2Seq model.
 
         Vectorised with sliding windows and returned as float32 arrays:
         - X_encoder: (n, input_steps, n_features)
-        - X_decoder: (n, output_steps, 1-3)
+        - X_decoder: (n, output_steps, 1-3 + extras)
         - y_decoder: (n, output_steps, 1)
 
         With ``persistence_gate`` the decoder inputs gain a trailing channel
         holding the last observed target at every step (the blend reference
-        used by the output gate).
+        used by the output gate). With ``decoder_extra``:
+        - "time": 4 trailing channels with the RAW hour/day sin/cos of each
+          TARGET step (deployment-valid: calendar is known in advance);
+        - "pos": 4 trailing sinusoidal positional-encoding channels.
         """
         data = np.asarray(data, dtype=np.float32)
         n_sequences = len(data) - input_steps - output_steps + 1
@@ -78,6 +101,23 @@ class Seq2SeqWrapper:
         else:
             raise ValueError(f"Unknown decoder mode: {decoder_mode}")
 
+        if decoder_extra == "time":
+            if time_extras is None:
+                raise ValueError("decoder_extra='time' requer time_extras (n, 4).")
+            extra_windows = sliding_window_view(
+                np.asarray(time_extras, dtype=np.float32),
+                (output_steps, 4),
+            )[:n_sequences, 0]
+            X_decoder = np.concatenate(
+                [X_decoder, np.ascontiguousarray(extra_windows)], axis=-1)
+        elif decoder_extra == "pos":
+            X_decoder = np.concatenate(
+                [X_decoder, np.broadcast_to(
+                    positional_channels(output_steps)[None],
+                    (n_sequences, output_steps, 4))], axis=-1)
+        elif decoder_extra is not None:
+            raise ValueError(f"Unknown decoder_extra: {decoder_extra}")
+
         y = target_windows[:, input_steps:].astype(np.float32)
         if target_mode == "residual":
             y -= last_observed[:, None]
@@ -86,9 +126,11 @@ class Seq2SeqWrapper:
 
         return X_encoder, X_decoder, y.reshape(n_sequences, output_steps, 1)
 
-    def prepare_data(self, data, input_steps, output_steps, target_col, scaler_target=None, scaler_other=None, create_sequences=True, denoise=("ws100",), decoder_mode=None, target_mode=None, persistence_gate=None):
+    def prepare_data(self, data, input_steps, output_steps, target_col, scaler_target=None, scaler_other=None, create_sequences=True, denoise=("ws100",), decoder_mode=None, target_mode=None, persistence_gate=None, features=None, decoder_extra=None):
         if persistence_gate is None:
             persistence_gate = getattr(self, "persistence_gate", False)
+        if decoder_mode is None:
+            decoder_mode = getattr(self, "decoder_mode", "teacher_forcing")
         data = data.copy()
         values = {}# Aplica o denoising em cada coluna e armazena os resultados
         for col in denoise:
@@ -97,6 +139,12 @@ class Seq2SeqWrapper:
                 data[f'{col}_wavelet'] = denoised_signal
             elif col not in data.columns:
                 raise ValueError(f"A coluna '{col}' não existe no conjunto de dados.")
+        if features:
+            keep = [c for c in data.columns if c in set(features) | {target_col}]
+            missing = (set(features) | {target_col}) - set(keep)
+            if missing:
+                raise ValueError(f"Features ausentes no dataset: {sorted(missing)}")
+            data = data[keep]
         if scaler_target is None:
             scaler_target = MinMaxScaler()
             scaler_target.fit(data[[target_col]])
@@ -111,15 +159,23 @@ class Seq2SeqWrapper:
         variables_scaled[other_columns] = scaler_other.transform(data[other_columns])
         target_col_index = data.columns.get_loc(target_col)
 
+        time_extras = None
+        if decoder_extra == "time":
+            if not isinstance(data.index, pd.DatetimeIndex):
+                raise ValueError("decoder_extra='time' requer DatetimeIndex.")
+            time_extras = cyclic_extras_from_index(data.index)
+
         if create_sequences:
             X_encoder, X_decoder, y_decoder = self.create_sequences(
                 variables_scaled,
                 input_steps,
                 output_steps,
                 target_col_index,
-                decoder_mode=decoder_mode or getattr(self, "decoder_mode", "teacher_forcing"),
+                decoder_mode=decoder_mode,
                 target_mode=target_mode or getattr(self, "target_mode", "absolute"),
                 persistence_gate=persistence_gate,
+                decoder_extra=decoder_extra,
+                time_extras=time_extras,
             )
             values['X_encoder'] = X_encoder
             values['X_decoder'] = X_decoder
@@ -132,7 +188,7 @@ class Seq2SeqWrapper:
         values['target_col_index'] = target_col_index
         return values, variables_scaled
 
-    def prepare(self, train_data, val_data, input_steps=72, output_steps=36, denoise_level=2, target_col='ws100_wavelet', denoise=("ws100",), decoder_mode="teacher_forcing", target_mode="absolute", create_sequences=True, validate_with_inference_decoder=True, persistence_gate=False):
+    def prepare(self, train_data, val_data, input_steps=72, output_steps=36, denoise_level=2, target_col='ws100_wavelet', denoise=("ws100",), decoder_mode="teacher_forcing", target_mode="absolute", create_sequences=True, validate_with_inference_decoder=True, persistence_gate=False, features=None, decoder_extra=None):
 
         self.input_steps = input_steps
         self.output_steps = output_steps
@@ -142,13 +198,17 @@ class Seq2SeqWrapper:
         self.decoder_mode = decoder_mode
         self.target_mode = target_mode
         self.persistence_gate = persistence_gate
+        self.features = tuple(features) if features else None
+        self.decoder_extra = decoder_extra
 
         self.train, processed_train = self.prepare_data(train_data,
                                        input_steps,
                                        output_steps,
                                        target_col,
                                        denoise=denoise,
-                                       create_sequences=create_sequences)
+                                       create_sequences=create_sequences,
+                                       features=features,
+                                       decoder_extra=decoder_extra)
         self.scaler_target = self.train['scaler_target']
         self.scaler_other = self.train['scaler_other']
         self.target_col_index = self.train['target_col_index']
@@ -159,16 +219,17 @@ class Seq2SeqWrapper:
                                      scaler_target=self.train['scaler_target'],
                                      scaler_other=self.train['scaler_other'],
                                      denoise=denoise,
-                                     create_sequences=create_sequences)
+                                     create_sequences=create_sequences,
+                                     features=features,
+                                     decoder_extra=decoder_extra)
         if create_sequences:
             self.num_encoder_features = self.train["X_encoder"].shape[2]
             self.num_decoder_features = self.train["X_decoder"].shape[2]
         else:
             # Scaler-only preparation (used before loading saved weights).
-            self.num_encoder_features = processed_train.shape[1]
             self.num_decoder_features = (2 if decoder_mode == "direct" else 1) + (
                 1 if persistence_gate else 0
-            )
+            ) + (4 if decoder_extra else 0)
 
         if create_sequences and decoder_mode == "teacher_forcing" and validate_with_inference_decoder:
             # At deployment the decoder never sees ground-truth future steps;
@@ -231,6 +292,10 @@ class Seq2SeqWrapper:
                     data[f'{col}_wavelet'] = wavelet_denoising(
                         data[col].values, level=self.denoise_level
                     )
+            if getattr(self, "features", None):
+                keep = [c for c in data.columns
+                        if c in set(self.features) | {self.target_col}]
+                data = data[keep]
             target_idx = data.columns.get_loc(self.target_col)
             array = data.to_numpy(dtype=np.float32)
 
@@ -240,11 +305,14 @@ class Seq2SeqWrapper:
         return array, target_idx
 
     @staticmethod
-    def _build_decoder_input(encoder_window, output_steps, decoder_mode, target_col_index, persistence_gate=False):
+    def _build_decoder_input(encoder_window, output_steps, decoder_mode, target_col_index, persistence_gate=False, decoder_extra=None, future_time_extras=None):
         """Inference-time decoder input: the last observed target, as seen at
         deployment (the model never receives ground-truth future steps). With
         ``persistence_gate`` a trailing channel repeats the last observed
-        value at every decoder step (the output gate reference)."""
+        value at every decoder step (the output gate reference). With
+        ``decoder_extra`` the same positional/time channels used in training
+        are appended ("time" requires ``future_time_extras``, the raw
+        (batch, output_steps, 4) cyclic values of the target steps)."""
         last_observed = encoder_window[..., -1, target_col_index]
         if decoder_mode == "direct":
             width = 3 if persistence_gate else 2
@@ -259,6 +327,18 @@ class Seq2SeqWrapper:
             decoder_input[..., 0, 0] = last_observed
             if persistence_gate:
                 decoder_input[..., :, 1] = last_observed[..., None]
+        if decoder_extra == "pos":
+            decoder_input = np.concatenate(
+                [decoder_input, np.broadcast_to(
+                    positional_channels(output_steps),
+                    (*decoder_input.shape[:-1], 4)).astype(np.float32)], axis=-1)
+        elif decoder_extra == "time":
+            if future_time_extras is None:
+                raise ValueError("decoder_extra='time' requer future_time_extras.")
+            decoder_input = np.concatenate(
+                [decoder_input,
+                 np.asarray(future_time_extras, dtype=np.float32).reshape(
+                     *decoder_input.shape[:-1], 4)], axis=-1)
         return decoder_input, last_observed
 
     def predict(self, input_data):
@@ -269,9 +349,19 @@ class Seq2SeqWrapper:
                 f"predict expects exactly {self.input_steps} rows, got {len(data_scaled)}."
             )
         encoder_input = data_scaled.reshape(1, self.input_steps, data_scaled.shape[1])
+        future_time_extras = None
+        if getattr(self, "decoder_extra", None) == "time":
+            if not isinstance(input_data.index, pd.DatetimeIndex):
+                raise ValueError("decoder_extra='time' requer DataFrame com DatetimeIndex.")
+            last_ts = input_data.index[-1]
+            future = pd.date_range(last_ts, periods=self.output_steps + 1,
+                                   freq="10min")[1:]
+            future_time_extras = cyclic_extras_from_index(future)[None]
         decoder_input, last_observed = self._build_decoder_input(
             encoder_input, self.output_steps, self.decoder_mode, target_idx,
             persistence_gate=self.persistence_gate,
+            decoder_extra=getattr(self, "decoder_extra", None),
+            future_time_extras=future_time_extras,
         )
 
         prediction = self.model.predict([encoder_input, decoder_input], verbose=0)
@@ -302,9 +392,19 @@ class Seq2SeqWrapper:
             data_scaled[test_start - self.input_steps:], self.input_steps, axis=0
         )[:count]
         encoder_input = np.ascontiguousarray(np.moveaxis(windows, 2, 1))
+        future_time_extras = None
+        if getattr(self, "decoder_extra", None) == "time":
+            if not isinstance(data.index, pd.DatetimeIndex):
+                raise ValueError("decoder_extra='time' requer DatetimeIndex.")
+            extras = cyclic_extras_from_index(data.index)
+            future_time_extras = sliding_window_view(
+                extras, (self.output_steps, 4)
+            )[test_start:test_start + count, 0]
         decoder_input, last_observed = self._build_decoder_input(
             encoder_input, self.output_steps, self.decoder_mode, target_idx,
             persistence_gate=self.persistence_gate,
+            decoder_extra=getattr(self, "decoder_extra", None),
+            future_time_extras=future_time_extras,
         )
 
         predictions = self.model.predict(

@@ -39,10 +39,37 @@ python tests/compare_rf_lgbm_impute_detailed.py --optuna
 
 # Regenerate complete-period slices (data/series_list/)
 python src/periods.py --min-length 108
+
+# Distributed Optuna round 2 (local GPU + Colab notebooks + Kaggle kernels;
+# see skill optuna-colab / docs below)
+python scripts/colab_round2.py all --colab-gpus 1 --kaggle-gpus 1  # plan + package + notebooks
+python scripts/colab_round2.py local --start        # local watchdog (light wrappers)
+python scripts/colab_round2.py kaggle               # dataset + push Kaggle kernels
+python scripts/colab_monitor.py --watch 60          # monitor local + Colab + Kaggle
+python scripts/colab_round2.py collect --kaggle --drive-dir <mirror> --promote  # finish
 ```
 
 There are no linter, formatter, type-checker, or test runner commands configured. No CI workflows exist.
 For linting during development, `pyflakes` and `radon` are useful but are not in requirements.txt.
+
+## Distributed Optuna round (local + Colab + Kaggle)
+
+`pipeline/pipeline.optuna_round2.json` defines the `round2` studies (wrappers
+`lstm, lstm_bi, tcn, tcn_bi`; one sqlite per wrapper under
+`pipeline/tmp/optuna_round2/`; every worker resumes via `load_if_exists=True`).
+`scripts/colab_round2.py` plans the distribution (heavy: tcn/tcn_bi -> Colab
+notebooks and/or Kaggle kernels; light: lstm/lstm_bi -> local
+`scripts/optuna_watchdog.sh`), balances by median trial cost, packages the repo
+zip (Drive `MyDrive/wind-speed-colab/round2/package/` + Kaggle dataset) and
+generates the notebooks in `notebooks/colab_round2/` — **never edit those by
+hand; regenerate**. RAM limits are calibrated per environment at runtime
+(local 85% of MemTotal, Colab/Kaggle 82%). Colab workers publish heartbeats +
+sqlite snapshots to Drive; Kaggle workers (`scripts/kaggle_round2_worker.py`,
+pushed via `kaggle_runner.py` with `--progress-subdir optuna_round2`) snapshot
+progress into the kernel output every 10 min and are monitored via
+`kaggle kernels status`. `scripts/colab_monitor.py` consolidates everything
+(exit 3 = error/stale). The `optuna-colab` skill has the full runbook incl.
+the error-fix playbook.
 
 ## Architecture
 

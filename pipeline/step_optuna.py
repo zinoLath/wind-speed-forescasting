@@ -42,6 +42,7 @@ def _run_search(wrapper_key, train_df, val_df, cfg, out_dir):
         target_col=cfg["target_col"],
         denoise=cfg["denoise"],
         denoise_level=cfg["denoise_level"],
+        features=cfg.get("features"),
         persistence_gate=cfg.get("persistence_gate", False),
     )
     wrapper.loss = cfg.get("loss", "mse")
@@ -98,9 +99,19 @@ def _run_search(wrapper_key, train_df, val_df, cfg, out_dir):
         # regime, and docs/estudo_transformer.md shows that regime-shift
         # robustness is what actually predicts test error.
         val = wrapper.val
-        predicted_scaled = wrapper.model.predict(
-            [val["X_encoder"], val["X_decoder"]], batch_size=128, verbose=0
-        )[:, :, 0]
+        try:
+            predicted_scaled = wrapper.model.predict(
+                [val["X_encoder"], val["X_decoder"]], batch_size=128, verbose=0
+            )[:, :, 0]
+        except (tf.errors.ResourceExhaustedError, tf.errors.InternalError,
+                MemoryError) as error:
+            # A inferencia de validacao (batch 128) pode estourar mesmo quando o
+            # treino (batch menor) coube; mesmo remedio do treino: descarta o trial.
+            trial.set_user_attr("oom", f"eval: {str(error)[:200]}")
+            wrapper.model = None
+            gc.collect()
+            K.clear_session()
+            raise optuna.TrialPruned("OOM (evaluation)") from error
         actual_scaled = val["y_decoder"][:, :, 0]
         if wrapper.target_mode == "residual":
             persistence = val["X_encoder"][:, -1, wrapper.target_col_index]
@@ -208,7 +219,8 @@ def run(config):
     tf.keras.utils.set_random_seed(config[STAGE]["seed"])
 
     cfg = config[STAGE]
-    dataset = common.load_dataset(common.resolve(config["paths"]["dataset_csv"]))
+    dataset = common.load_dataset(common.resolve(config["paths"]["dataset_csv"]),
+                                  keep_raw=tuple(cfg.get("denoise", ())))
     train_df, val_df, _ = common.split_dataset(
         dataset, cfg.get("train_ratio", 0.75), cfg.get("val_ratio", 0.20)
     )

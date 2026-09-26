@@ -71,12 +71,13 @@ def canonicalize_columns(df):
     return df.rename(columns={col: COLUMN_ALIASES[col] for col in df.columns if col in COLUMN_ALIASES})
 
 
-def forecast_redundant_columns(columns):
+def forecast_redundant_columns(columns, keep=()):
     """Columns of the forecast dataset that never feed the models.
 
     Covers metadata columns, the shear indicators (``cis*``), the dispersion
     families and every ws/v/dir column outside the canonical heights.
     """
+    keep = set(keep)
     drop = set(METADATA_COLUMNS)
     for col in columns:
         name = str(col)
@@ -87,7 +88,8 @@ def forecast_redundant_columns(columns):
         if not match:
             continue
         prefix, height = match.group(1), int(match.group(2))
-        if prefix in ("disp", "vdisp") or height not in CANONICAL_HEIGHTS:
+        if (prefix in ("disp", "vdisp") or height not in CANONICAL_HEIGHTS) \
+                and name not in keep:
             drop.add(name)
     return drop
 
@@ -433,6 +435,12 @@ def add_cyclic_features(dataset):
         dataset["doy_sin"] = np.sin(year_angle)
         dataset["doy_cos"] = np.cos(year_angle)
 
+    if "day_sin" not in dataset.columns:
+        # Ciclo semanal (dataset de ~52 dias; dia do mês quase não cicla).
+        day_angle = 2 * np.pi * dataset.index.dayofweek / 7.0
+        dataset["day_sin"] = np.sin(day_angle)
+        dataset["day_cos"] = np.cos(day_angle)
+
     direction_columns = [
         col for col in dataset.columns
         if col.startswith("dir") and col[3:].isdigit() and not col.endswith(("_sin", "_cos"))
@@ -446,7 +454,7 @@ def add_cyclic_features(dataset):
     return dataset
 
 
-def load_dataset(path):
+def load_dataset(path, keep_raw=()):
     """Load a forecast dataset (dataset.csv) into a clean DataFrame.
 
     Returns a DataFrame indexed by timestamp with the heavy redundant columns
@@ -468,7 +476,7 @@ def load_dataset(path):
     dataset = dataset.sort_values("timestamp").set_index("timestamp")
 
     dataset = canonicalize_columns(dataset)
-    redundant = forecast_redundant_columns(dataset.columns)
+    redundant = forecast_redundant_columns(dataset.columns, keep=keep_raw)
     dataset = dataset.drop(
         columns=[c for c in redundant if c in dataset.columns], errors="ignore"
     )
@@ -541,6 +549,8 @@ def predict_all_horizons(wrapper, eval_df):
         denoise=wrapper.denoise,
         decoder_mode=wrapper.decoder_mode,
         target_mode=wrapper.target_mode,
+        features=getattr(wrapper, "features", None),
+        decoder_extra=getattr(wrapper, "decoder_extra", None),
     )
     if wrapper.decoder_mode == "teacher_forcing":
         prepared["X_decoder"][:, :, 0] = prepared["X_decoder"][:, :1, 0]

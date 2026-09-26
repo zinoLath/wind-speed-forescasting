@@ -103,6 +103,13 @@ alternativo:
 python pipeline/step_walkforward.py --config pipeline/pipeline.json
 ```
 
+A rodada distribuída de Optuna (`pipeline/pipeline.optuna_round2.json`,
+estudo `round2` com sqlite por wrapper em `pipeline/tmp/optuna_round2/`) é
+orquestrada por `scripts/colab_round2.py` e `scripts/colab_monitor.py` —
+wrappers pesados em notebooks do Google Colab, leves na GPU local. O runbook
+completo (incluindo o playbook de erros) está na skill `optuna-colab`
+(`.opencode/skills/optuna-colab/SKILL.md`) e resumido no `AGENTS.md`.
+
 ## Estágios
 
 ### 1. `optuna` — otimização de hiperparâmetros
