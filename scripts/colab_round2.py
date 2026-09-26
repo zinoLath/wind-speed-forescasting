@@ -73,14 +73,18 @@ WEIGHTS = {
 }
 
 
-def _round_cfg():
-    with open(PROJECT_ROOT / ROUND_CONFIG, encoding="utf-8") as handle:
+def _round_cfg(config_path=None):
+    path = PROJECT_ROOT / (config_path or ROUND_CONFIG)
+    with open(path, encoding="utf-8") as handle:
         cfg = json.load(handle)
     optuna = cfg.get("optuna", {})
+    study_name = optuna.get("study_name", STUDY_NAME)
     return {
-        "config": ROUND_CONFIG,
+        "config": str(path.relative_to(PROJECT_ROOT)),
         "storage_subdir": optuna.get("storage_subdir", STORAGE_SUBDIR),
-        "study_name": optuna.get("study_name", STUDY_NAME),
+        "study_name": study_name,
+        "drive_root": optuna.get("drive_root", f"wind-speed-colab/{study_name}"),
+        "assign": optuna.get("assign"),
         "n_trials": int(optuna.get("n_trials", 120)),
         "epochs": int(optuna.get("epochs", 100)),
         "wrappers": list(optuna.get("wrappers", [])),
@@ -107,38 +111,64 @@ def estimate_costs():
 
 
 def cmd_plan(args):
-    cfg = _round_cfg()
+    cfg = _round_cfg(args.config)
     wrappers = cfg["wrappers"]
     unknown = [w for w in wrappers if w not in WRAPPER_DIRS]
     if unknown:
         raise SystemExit(f"Wrappers sem diretorio mapeado em WRAPPER_DIRS: {unknown}")
 
     costs = estimate_costs()
-    heavy = [w for w in wrappers if w in HEAVY]
-    light = [w for w in wrappers if w in LIGHT]
-    misplaced = [w for w in wrappers if w not in HEAVY + LIGHT]
-    if misplaced:
-        print(f"[aviso] wrappers fora de HEAVY/LIGHT ficam locais: {misplaced}")
-        light = light + misplaced
 
-    # Pool de GPUs remotas: cada worker = 1 GPU (notebook Colab ou kernel
-    # Kaggle). Longest Processing Time distribui os pesados pelo menor custo
-    # acumulado; leves ficam na GPU local.
-    pool = []
-    for i in range(max(0, args.colab_gpus)):
-        pool.append({"worker": f"colab-gpu{i + 1}", "backend": "colab",
-                     "wrappers": [], "cost": 0.0})
-    for i in range(max(0, args.kaggle_gpus)):
-        pool.append({"worker": f"kaggle-gpu{i + 1}", "backend": "kaggle",
-                     "wrappers": [], "cost": 0.0})
-    if heavy and not pool:
-        print("[aviso] wrappers pesados sem GPU remota no plano; ficam locais.")
-        light = light + heavy
-        heavy = []
-    for wrapper in sorted(heavy, key=lambda w: costs.get(w, 1.0), reverse=True):
-        target = min(pool, key=lambda w: w["cost"])
-        target["wrappers"].append(wrapper)
-        target["cost"] += costs.get(wrapper, 1.0)
+    # Distribuicao explicita (config "assign") tem precedencia sobre o
+    # HEAVY/LIGHT + Longest Processing Time.
+    assign = cfg.get("assign")
+    if assign:
+        colab_list = list(assign.get("colab", []))
+        kaggle_list = list(assign.get("kaggle", []))
+        local_list = list(assign.get("local", []))
+        assigned = set(colab_list) | set(kaggle_list) | set(local_list)
+        if assigned != set(wrappers):
+            raise SystemExit(
+                "assign do config nao cobre os wrappers do estudo:\n"
+                f"  config: {sorted(wrappers)}\n  assign: {sorted(assigned)}"
+            )
+        pool = []
+        for i, wrapper in enumerate(colab_list):
+            pool.append({"worker": f"colab-gpu{i + 1}", "backend": "colab",
+                         "wrappers": [wrapper], "cost": costs.get(wrapper, 1.0)})
+        for i, wrapper in enumerate(kaggle_list):
+            pool.append({"worker": f"kaggle-gpu{i + 1}", "backend": "kaggle",
+                         "wrappers": [wrapper], "cost": costs.get(wrapper, 1.0)})
+        local_wrappers = list(local_list)
+        colab_gpus, kaggle_gpus = len(colab_list), len(kaggle_list)
+    else:
+        heavy = [w for w in wrappers if w in HEAVY]
+        light = [w for w in wrappers if w in LIGHT]
+        misplaced = [w for w in wrappers if w not in HEAVY + LIGHT]
+        if misplaced:
+            print(f"[aviso] wrappers fora de HEAVY/LIGHT ficam locais: {misplaced}")
+            light = light + misplaced
+
+        # Pool de GPUs remotas: cada worker = 1 GPU (notebook Colab ou kernel
+        # Kaggle). Longest Processing Time distribui os pesados pelo menor custo
+        # acumulado; leves ficam na GPU local.
+        pool = []
+        for i in range(max(0, args.colab_gpus)):
+            pool.append({"worker": f"colab-gpu{i + 1}", "backend": "colab",
+                         "wrappers": [], "cost": 0.0})
+        for i in range(max(0, args.kaggle_gpus)):
+            pool.append({"worker": f"kaggle-gpu{i + 1}", "backend": "kaggle",
+                         "wrappers": [], "cost": 0.0})
+        if heavy and not pool:
+            print("[aviso] wrappers pesados sem GPU remota no plano; ficam locais.")
+            light = light + heavy
+            heavy = []
+        for wrapper in sorted(heavy, key=lambda w: costs.get(w, 1.0), reverse=True):
+            target = min(pool, key=lambda w: w["cost"])
+            target["wrappers"].append(wrapper)
+            target["cost"] += costs.get(wrapper, 1.0)
+        local_wrappers = light
+        colab_gpus, kaggle_gpus = max(0, args.colab_gpus), max(0, args.kaggle_gpus)
 
     workers = []
     for worker in pool:
@@ -150,17 +180,16 @@ def cmd_plan(args):
                                  if big else "T4")
             entry["notebook"] = f"notebooks/colab_round2/{worker['worker']}.ipynb"
         else:
-            entry["slug"] = f"optuna-round2-{worker['worker']}"
+            entry["slug"] = f"optuna-{cfg['study_name']}-{worker['worker']}"
             entry["command"] = (
                 f"python scripts/kaggle_round2_worker.py --config {cfg['config']} "
                 f"--wrappers " + " ".join(worker["wrappers"])
             )
         workers.append(entry)
 
-    local_wrappers = light
     local_command = (
         f"LOG=pipeline/tmp/colab_round2/logs/local-watchdog.log "
-        f"bash scripts/optuna_watchdog.sh {ROUND_CONFIG} " + " ".join(local_wrappers)
+        f"bash scripts/optuna_watchdog.sh {cfg['config']} " + " ".join(local_wrappers)
         if local_wrappers else ""
     )
     if args.max_ram_gb and local_wrappers:
@@ -168,9 +197,9 @@ def cmd_plan(args):
     plan = {
         "generated_at": datetime.now(timezone.utc).isoformat(),
         **cfg,
-        "drive_root": DRIVE_ROOT,
-        "colab_gpus": max(0, args.colab_gpus),
-        "kaggle_gpus": max(0, args.kaggle_gpus),
+        "drive_root": cfg["drive_root"],
+        "colab_gpus": colab_gpus,
+        "kaggle_gpus": kaggle_gpus,
         "local": {
             "wrappers": local_wrappers,
             "command": local_command,
@@ -208,13 +237,19 @@ def cmd_plan(args):
 
 
 def cmd_package(args):
-    cfg = _round_cfg()
+    cfg = _round_cfg(args.config)
     stamp = time.strftime("%Y%m%d")
     out = PROJECT_ROOT / "dist" / f"colab_round2_package_{stamp}.zip"
     out.parent.mkdir(parents=True, exist_ok=True)
 
     with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as zf:
-        for pattern in ("src", "tests", "scripts", "pipeline/*.py", "pipeline/*.json",
+        # Diretorios de codigo entram recursivamente (glob() so retorna o proprio
+        # diretorio, que is_file() descartaria).
+        for pattern in ("src", "scripts", "tests"):
+            for path in (PROJECT_ROOT / pattern).rglob("*"):
+                if path.is_file() and "__pycache__" not in path.parts:
+                    zf.write(path, path.relative_to(PROJECT_ROOT))
+        for pattern in ("pipeline/*.py", "pipeline/*.json",
                         "requirements.txt", "data/dataset.csv"):
             for path in PROJECT_ROOT.glob(pattern):
                 if path.is_file():
@@ -228,14 +263,14 @@ def cmd_package(args):
                     zf.write(path, path.relative_to(PROJECT_ROOT))
 
     print(f"Pacote gerado: {out} ({out.stat().st_size / 1e6:.1f} MB)")
-    print(f"Suba-o para o Drive em: MyDrive/{DRIVE_ROOT}/package/")
+    print(f"Suba-o para o Drive em: MyDrive/{cfg['drive_root']}/package/")
     return out
 
 
 # --- Celulas do notebook -----------------------------------------------------
 
 MD_HEADER = """\
-# Optuna Round 2 — worker `{worker}` (Google Colab GPU)
+# Optuna {study} — worker `{worker}` (Google Colab GPU)
 
 Busca distribuída: **{wrappers}** rodam aqui; os wrappers leves ficam na GPU
 local. Cada trial é gravado no sqlite (estudo `{study}`), então desconexões do
@@ -817,7 +852,7 @@ def cmd_kaggle(args):
         print(f"dataset {full_id}: {verb} com {zip_path.name}")
         if exists:
             _kaggle_run("datasets", "version", "-p", str(folder), "-m",
-                        f"round2 {time.strftime('%F %T')}", "--dir-mode", "zip")
+                        f"{plan['study_name']} {time.strftime('%F %T')}", "--dir-mode", "zip")
         else:
             _kaggle_run("datasets", "create", "-p", str(folder), "--dir-mode", "zip")
 
@@ -991,7 +1026,7 @@ def cmd_all(args):
         print("\nWorkers Kaggle — empurre os kernels com:")
         print("  python scripts/colab_round2.py kaggle        (ou --dry-run p/ inspecionar)")
     print("\nProximos passos manuais:")
-    print(f"  1. Suba dist/colab_round2_package_*.zip para MyDrive/{DRIVE_ROOT}/package/")
+    print(f"  1. Suba dist/colab_round2_package_*.zip para MyDrive/{plan['drive_root']}/package/")
     print("  2. Abra cada notebook em notebooks/colab_round2/ no Colab com Runtime GPU")
     print("  3. Monitore tudo com: python scripts/colab_monitor.py --watch 60")
 
@@ -1001,6 +1036,8 @@ def main():
     sub = parser.add_subparsers(dest="cmd", required=True)
 
     p = sub.add_parser("plan", help="distribui wrappers entre GPUs Colab/Kaggle e local")
+    p.add_argument("--config", default=None,
+                   help="config do estudo (default: pipeline/pipeline.optuna_round2.json)")
     p.add_argument("--colab-gpus", type=int, default=1,
                    help="numero de notebooks Colab (1 GPU cada) para os pesados")
     p.add_argument("--kaggle-gpus", type=int, default=1,
@@ -1010,6 +1047,7 @@ def main():
     p.set_defaults(func=cmd_plan)
 
     p = sub.add_parser("package", help="gera dist/colab_round2_package_<data>.zip")
+    p.add_argument("--config", default=None)
     p.set_defaults(func=cmd_package)
 
     p = sub.add_parser("notebooks", help="gera notebooks/colab_round2/<worker>.ipynb")
@@ -1024,6 +1062,7 @@ def main():
     p.set_defaults(func=cmd_local)
 
     p = sub.add_parser("kaggle", help="dataset + push dos kernels Kaggle da rodada")
+    p.add_argument("--config", default=None)
     p.add_argument("--plan", default=None)
     p.add_argument("--dry-run", action="store_true",
                    help="mostra script/metadata dos kernels sem empurrar")
@@ -1043,6 +1082,7 @@ def main():
     p.set_defaults(func=cmd_collect)
 
     p = sub.add_parser("all", help="plan + package + notebooks")
+    p.add_argument("--config", default=None)
     p.add_argument("--colab-gpus", type=int, default=1)
     p.add_argument("--kaggle-gpus", type=int, default=1)
     p.add_argument("--max-ram-gb", dest="max_ram_gb", type=float, default=None)

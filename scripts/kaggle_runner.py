@@ -116,6 +116,13 @@ assert (REPO / "data" / "dataset.csv").is_file(), "dataset.csv ausente"
 print("repo em:", REPO)
 
 os.chdir(REPO)
+print("instalando dependencias do projeto no kernel...")
+subprocess.check_call([
+    sys.executable, "-m", "pip", "install", "-q",
+    "tensorflow[and-cuda]==2.21.0", "keras==3.12.1", "keras-tcn==3.5.6",
+    "optuna==4.9.0", "PyWavelets==1.8.0", "pandas>=2.0",
+    "scikit-learn>=1.3", "numpy>=1.26",
+])
 print("\\n$ " + COMMAND)
 code = subprocess.call(COMMAND, shell=True)
 print("\\ncomando terminou com codigo", code)
