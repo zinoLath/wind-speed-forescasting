@@ -30,8 +30,8 @@
       "val_blocks": 4
     },
     "assign": {
-      "kaggle": ["lstm_bi", "tcn_bi", "lstm"],
-      "local": ["tcn"]
+      "kaggle": ["lstm_bi", "tcn_bi"],
+      "local": ["tcn", "lstm"]
     }
   }
 }
