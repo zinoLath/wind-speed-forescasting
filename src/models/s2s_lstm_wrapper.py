@@ -12,7 +12,7 @@ from tensorflow.keras.optimizers import Adam, AdamW
 from .seq2seq_wrapper import Seq2SeqWrapper
 from .layers import apply_persistence_gate
 from .s2s_transformer_wrapper import make_learning_rate
-from .losses import horizon_weighted_mse, LOSS_NAME
+from .losses import horizon_weighted_mse, itilde_q, LOSS_NAME, ITILDE_Q_NAME
 
 
 class S2SLSTMWrapper(Seq2SeqWrapper):
@@ -23,15 +23,25 @@ class S2SLSTMWrapper(Seq2SeqWrapper):
     def build(self, hp):
         self._require_prepared()
 
-        self.lr_schedule_mode = "constant"
-        learning_rate = make_learning_rate(hp)
+        self.lr_schedule_mode = getattr(self, "schedule_mode_override", "constant")
+        schedule_steps = (getattr(self, "schedule_total_steps", None)
+                          if self.lr_schedule_mode == "warmup_cosine" else None)
+        learning_rate = make_learning_rate(hp, schedule_total_steps=schedule_steps)
         weight_decay = hp.Choice('weight_decay', [0.0, 1e-4], default=0.0)
 
-        lstm_units = hp.Int('lstm_units', min_value=32, max_value=192, step=32, default=64)
+        lstm_units = hp.Int('lstm_units', min_value=48, max_value=252, step=4, default=64)
         encoder_dropout_rate = hp.Float('encoder_dropout_rate', min_value=0.0, max_value=0.3, step=0.05, default=0.05)
         decoder_dropout_rate = hp.Float('decoder_dropout_rate', min_value=0.0, max_value=0.3, step=0.05, default=0.0)
-        loss = horizon_weighted_mse(self.output_steps)
-        self.loss = LOSS_NAME
+        _lmode = getattr(self, "loss_mode_override", None)
+        if _lmode == "mse":
+            loss = "mse"
+            self.loss = "mse"
+        elif _lmode == "itilde_q":
+            loss = itilde_q(self.output_steps)
+            self.loss = ITILDE_Q_NAME
+        else:
+            loss = horizon_weighted_mse(self.output_steps)
+            self.loss = LOSS_NAME
 
         if weight_decay:
             optimizer = AdamW(learning_rate=learning_rate, weight_decay=weight_decay)

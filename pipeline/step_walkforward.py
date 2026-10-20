@@ -63,12 +63,16 @@ def resolve_input_path(config, cfg):
     return common.resolve(config["paths"]["dataset_csv"])
 
 
-def _train_and_predict(wrapper, train_df, eval_df, cfg, hyperparameters, imputed_flags=None):
+def _train_and_predict(wrapper, train_df, eval_df, cfg, hyperparameters, imputed_flags=None,
+                       observed=None):
     """Train on *train_df* (split internally into train/val) and predict *eval_df*.
 
     When *imputed_flags* is given (a boolean Series indexed like the input
     dataset), the predictions gain ``input_imputed``/``output_imputed`` flag
-    columns and the metrics gain observed-only values.
+    columns and the metrics gain observed-only values. When *observed* (a
+    DatetimeIndex from ``common.observed_timestamps``) is given, the headline
+    metrics are restricted to rows whose timestamp holds a real record —
+    interpolated grid rows are never scored.
 
     Returns (predictions_df, window_metrics_dict).
     """
@@ -118,11 +122,16 @@ def _train_and_predict(wrapper, train_df, eval_df, cfg, hyperparameters, imputed
     else:
         actual_col = "actual"
 
-    metrics = common.compute_metrics(predictions[actual_col], predictions["predicted"])
+    metric_rows = predictions
+    if observed is not None:
+        predictions["observed"] = predictions["timestamp"].isin(observed)
+        metric_rows = predictions[predictions["observed"]]
+
+    metrics = common.compute_metrics(metric_rows[actual_col], metric_rows["predicted"])
     metrics["persistence_mae"] = common.compute_metrics(
-        predictions[actual_col], predictions["persistence"]
+        metric_rows[actual_col], metric_rows["persistence"]
     )["mae"]
-    denoised = common.compute_metrics(predictions["actual"], predictions["predicted"])
+    denoised = common.compute_metrics(metric_rows["actual"], metric_rows["predicted"])
     metrics["mae_denoised"] = denoised["mae"]
     metrics["rmse_denoised"] = denoised["rmse"]
 
@@ -166,6 +175,8 @@ def _evaluate_wrapper(wrapper_key, df, cfg, config, out_dir, imputed_flags=None)
     model_dir = out_dir / wrapper_name
     model_dir.mkdir(parents=True, exist_ok=True)
 
+    observed = common.observed_timestamps(cfg["_input_path"])
+
     train_rows = cfg["train_window_days"] * ROWS_PER_DAY
     test_rows = cfg["test_window_days"] * ROWS_PER_DAY
     step_rows = cfg["step_days"] * ROWS_PER_DAY
@@ -192,7 +203,7 @@ def _evaluate_wrapper(wrapper_key, df, cfg, config, out_dir, imputed_flags=None)
         started_at = time.perf_counter()
         wrapper = wrapper_class()
         pred_df, metrics = _train_and_predict(
-            wrapper, train_df, test_df, cfg, hyperparameters, imputed_flags
+            wrapper, train_df, test_df, cfg, hyperparameters, imputed_flags, observed
         )
         elapsed = time.perf_counter() - started_at
 
@@ -231,13 +242,18 @@ def _evaluate_wrapper(wrapper_key, df, cfg, config, out_dir, imputed_flags=None)
     all_df = pd.concat(all_predictions, ignore_index=True)
     all_df.to_csv(model_dir / "predictions_all.csv", index=False)
     actual_col = "actual_raw" if "actual_raw" in all_df.columns else "actual"
-    overall = common.compute_metrics(all_df[actual_col], all_df["predicted"])
+    metric_df = all_df
+    if observed is not None:
+        metric_df = all_df[all_df["timestamp"].isin(observed)]
+    overall = common.compute_metrics(metric_df[actual_col], metric_df["predicted"])
     overall["persistence_mae"] = common.compute_metrics(
-        all_df[actual_col], all_df["persistence"]
+        metric_df[actual_col], metric_df["persistence"]
     )["mae"]
     overall["by_horizon"] = common.horizon_metrics(
-        all_df.assign(actual=all_df[actual_col])
+        metric_df.assign(actual=metric_df[actual_col])
     ).to_dict(orient="records")
+    if observed is not None:
+        overall["synthetic_excluded"] = int(len(all_df) - len(metric_df))
 
     summary = {
         "settings": {

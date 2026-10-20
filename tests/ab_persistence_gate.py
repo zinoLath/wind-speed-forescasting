@@ -15,8 +15,8 @@ Executar a partir da raiz do projeto:
     python tests/ab_persistence_gate.py
 
 Saída:
-    data/results/report/images/ab_*.png
-    data/results/report/ab_persistence_gate.html
+    reports/protocolo/persistence-gate-ab/images/ab_*.png
+    reports/protocolo/persistence-gate-ab/report.html
 """
 
 import argparse
@@ -41,7 +41,7 @@ from relatorio_resultados import build_wrapper, load_metadata
 GATED_DIR = PROJECT_ROOT / "pipeline" / "tmp" / "trained_compare"
 NOGATE_DIR = PROJECT_ROOT / "pipeline" / "tmp" / "trained_compare_nogate"
 DYN_DIR = PROJECT_ROOT / "pipeline" / "tmp" / "trained_compare_dynagate"
-OUT_DIR = PROJECT_ROOT / "data" / "results" / "report"
+OUT_DIR = PROJECT_ROOT / "reports" / "protocolo" / "persistence-gate-ab"
 IMG_DIR = OUT_DIR / "images"
 DATA_FILE = PROJECT_ROOT / "data" / "dataset.csv"
 FOCUS = ("lstm", "lstm_bi", "tcn", "tcn_bi")
@@ -646,7 +646,7 @@ def main():
     ))
 
     html = build_html(sides, keys, cards, "".join(parts))
-    out_file = OUT_DIR / "ab_persistence_gate.html"
+    out_file = OUT_DIR / "report.html"
     out_file.write_text(html, encoding="utf-8")
     print(f"Figuras salvas em: {IMG_DIR}")
     print(f"Relatório gerado em: {out_file}")

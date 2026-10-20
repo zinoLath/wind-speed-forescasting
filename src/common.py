@@ -60,6 +60,8 @@ COLUMN_ALIASES = {
 }
 # Non-feature columns of the forecast dataset (metadata/instrument columns).
 METADATA_COLUMNS = ("year", "month", "day", "hour", "minute", "id", "press", "humid", "temp")
+# Native cadence of the LiDAR forecast dataset (10-minute samples).
+DATASET_FREQ = "10min"
 
 
 def canonicalize_columns(df):
@@ -238,6 +240,69 @@ class OptunaHyperParameters:
 
     def Choice(self, name, values, default=None):
         return self.trial.suggest_categorical(name, values)
+
+
+class BoundedOptunaHyperParameters(OptunaHyperParameters):
+    """OptunaHyperParameters com espaco estreitado/fixado por nome (round 5).
+
+    *spec* mapeia nome do hp para uma de:
+      - ``{"fix": v}`` — valor fixo (gravado no trial via sugestao categorica
+        de valor unico, entao replay via best_trial.json continua funcionando);
+      - ``{"range": [lo, hi]}`` — faixa continua (``step``/``log`` opcionais,
+        iguais a semantica do suggest_float/suggest_int do Optuna);
+      - ``{"choices": [...]}`` — categorico reduzido.
+    Nomes fora do spec caem no espaco padrao do wrapper (comportamento round 4).
+    """
+
+    def __init__(self, trial, spec=None):
+        super().__init__(trial)
+        self.spec = spec or {}
+
+    def _fixed(self, name, value):
+        return self.trial.suggest_categorical(name, [value])
+
+    def _suggest(self, name):
+        """Resolve o spec do hp; None = sem override (cai no espaco do wrapper).
+
+        O tipo da sugestao vem do SPEC (nao de como o wrapper pediu), entao
+        Choice/Float/Int sao intercambiaveis sobre o mesmo nome.
+        """
+        spec = self.spec.get(name)
+        if spec is None:
+            return None
+        if "fix" in spec:
+            return self._fixed(name, spec["fix"])
+        if "choices" in spec:
+            return self.trial.suggest_categorical(name, spec["choices"])
+        lo, hi = spec["range"]
+        if spec.get("log"):
+            return self.trial.suggest_float(name, lo, hi, log=True)
+        step = spec.get("step")
+        if isinstance(lo, int) and isinstance(hi, int) and (
+                step is None or isinstance(step, int)):
+            return self.trial.suggest_int(name, lo, hi, step=step or 1)
+        return self.trial.suggest_float(name, lo, hi, step=step)
+
+    def Float(self, name, min_value, max_value, step=None, sampling=None,
+              default=None):
+        value = self._suggest(name)
+        if value is None:
+            return super().Float(name, min_value, max_value, step=step,
+                                 sampling=sampling, default=default)
+        return float(value)
+
+    def Int(self, name, min_value, max_value, step=1, default=None):
+        value = self._suggest(name)
+        if value is None:
+            return super().Int(name, min_value, max_value, step=step,
+                               default=default)
+        return int(value)
+
+    def Choice(self, name, values, default=None):
+        value = self._suggest(name)
+        if value is None:
+            return super().Choice(name, values, default=default)
+        return value
 
 
 def default_callbacks(wrapper, patience, min_lr=1e-6):
@@ -420,10 +485,14 @@ def add_cyclic_features(dataset):
     """Add calendar and wind-direction cyclic features, in place.
 
     - ``hour_sin``/``hour_cos``: position within the day (period 24 h);
-    - ``doy_sin``/``doy_cos``: position within the year (period 365 days);
     - ``dir{h}_sin``/``dir{h}_cos``: wind direction at height *h* encoded on
       the unit circle (raw degree columns are dropped, removing the 359°→1°
       discontinuity).
+
+    Weekly (``day_*``) and annual (``doy_*``) encodings were removed: the
+    campaign spans ~53 days (LiDAR) / ~13 months (imputada) — the annual ramp
+    is barely identifiable and both hurt in the feature ablations
+    (data/results/lidar_7525_features/).
 
     Requires a DatetimeIndex. Safe to call more than once.
     """
@@ -435,17 +504,6 @@ def add_cyclic_features(dataset):
         hour_angle = 2 * np.pi * minutes_of_day / (24 * 60)
         dataset["hour_sin"] = np.sin(hour_angle)
         dataset["hour_cos"] = np.cos(hour_angle)
-
-    if "doy_sin" not in dataset.columns:
-        year_angle = 2 * np.pi * (dataset.index.dayofyear - 1) / 365.0
-        dataset["doy_sin"] = np.sin(year_angle)
-        dataset["doy_cos"] = np.cos(year_angle)
-
-    if "day_sin" not in dataset.columns:
-        # Ciclo semanal (dataset de ~52 dias; dia do mês quase não cicla).
-        day_angle = 2 * np.pi * dataset.index.dayofweek / 7.0
-        dataset["day_sin"] = np.sin(day_angle)
-        dataset["day_cos"] = np.cos(day_angle)
 
     direction_columns = [
         col for col in dataset.columns
@@ -460,11 +518,87 @@ def add_cyclic_features(dataset):
     return dataset
 
 
-def load_dataset(path, keep_raw=()):
+def observed_timestamps(dataset_csv, freq=DATASET_FREQ):
+    """Rounded timestamps of the records actually present in *dataset_csv*.
+
+    ``load_dataset`` regularizes the series to a fixed grid and fills the
+    missing intervals by interpolation; metrics must exclude those synthetic
+    points so they are never evaluated against fabricated data. Returns the
+    DatetimeIndex of the real records, or ``None`` when the file carries no
+    ``id`` column or the series is already gap-free (nothing was inserted).
+    """
+    try:
+        stamps = pd.DatetimeIndex(
+            pd.to_datetime(pd.read_csv(dataset_csv, usecols=["id"])["id"], format="mixed")
+        ).round(freq)
+    except (KeyError, ValueError):
+        return None
+    stamps = stamps.sort_values()
+    grid = pd.date_range(stamps.min(), stamps.max(), freq=freq)
+    return stamps if len(grid) > len(stamps) else None
+
+
+def regularize_grid(dataset, freq=DATASET_FREQ):
+    """Snap the DatetimeIndex to a regular grid and fill the gaps.
+
+    Rounds away the microsecond instrument jitter, reindexes to the complete
+    ``freq`` grid and time-interpolates every non-metadata column of the
+    inserted rows. Direction columns (``dir{h}``) are interpolated on the
+    unit circle (sin/cos) and recomputed in degrees, so the 359°→1°
+    wrap-around never produces nonsense midpoints. Rows whose index is a
+    no-op (no rounding drift, no gaps) pass through unchanged.
+    """
+    if not isinstance(dataset.index, pd.DatetimeIndex):
+        return dataset
+
+    dataset.index = dataset.index.round(freq)
+    duplicates = dataset.index.duplicated()
+    if duplicates.any():
+        print(f"regularize_grid: {int(duplicates.sum())} duplicate timestamps after "
+              "rounding; keeping the first of each")
+        dataset = dataset[~duplicates]
+
+    grid = pd.date_range(dataset.index.min(), dataset.index.max(), freq=freq)
+    if len(grid) <= len(dataset):
+        return dataset
+
+    print(f"regularize_grid: series regularized to {freq}; "
+          f"{len(grid) - len(dataset)} missing interval(s) filled by interpolation")
+    dataset = dataset.reindex(grid)
+    feature_cols = [c for c in dataset.columns if c not in METADATA_COLUMNS]
+    direction_cols = [c for c in feature_cols if re.match(r"^dir\d+$", str(c))]
+    if direction_cols:
+        radians = np.deg2rad(dataset[direction_cols].to_numpy(dtype=np.float64))
+        sin_part = pd.DataFrame(
+            np.sin(radians), index=dataset.index, columns=direction_cols
+        ).interpolate(method="time", limit_direction="both")
+        cos_part = pd.DataFrame(
+            np.cos(radians), index=dataset.index, columns=direction_cols
+        ).interpolate(method="time", limit_direction="both")
+        norm = np.maximum(
+            np.hypot(sin_part.to_numpy(), cos_part.to_numpy()), 1e-12
+        )
+        dataset[direction_cols] = (
+            np.rad2deg(np.arctan2(sin_part.to_numpy() / norm, cos_part.to_numpy() / norm))
+            % 360
+        )
+    scalar_cols = [c for c in feature_cols if c not in direction_cols]
+    dataset[scalar_cols] = dataset[scalar_cols].interpolate(
+        method="time", limit_direction="both"
+    )
+    return dataset
+
+
+def load_dataset(path, keep_raw=(), freq=DATASET_FREQ):
     """Load a forecast dataset (dataset.csv) into a clean DataFrame.
 
     Returns a DataFrame indexed by timestamp with the heavy redundant columns
-    removed and directions/verticals renamed to short names.
+    removed and directions/verticals renamed to short names. The series is
+    regularized to the ``freq`` grid (default 10 min): microsecond instrument
+    jitter is rounded away and missing intervals are inserted and filled by
+    time interpolation — direction columns on the unit circle (sin/cos, so
+    the 359°→1° wrap-around is respected). Use ``observed_timestamps`` to
+    separate real records from interpolated ones when scoring.
     """
     dataset = pd.read_csv(path)
 
@@ -482,6 +616,7 @@ def load_dataset(path, keep_raw=()):
     dataset = dataset.sort_values("timestamp").set_index("timestamp")
 
     dataset = canonicalize_columns(dataset)
+    dataset = regularize_grid(dataset, freq=freq)
     redundant = forecast_redundant_columns(dataset.columns, keep=keep_raw)
     dataset = dataset.drop(
         columns=[c for c in redundant if c in dataset.columns], errors="ignore"
@@ -533,6 +668,31 @@ def compute_metrics(actual, predicted):
     }
 
 
+def align_decoder_channels(wrapper, prepared):
+    """Subset dos canais futuros do decoder para a geracao dos pesos carregados.
+
+    Geracoes antigas de pesos usam menos covariadas futuras do que o codigo
+    atual gera (ex.: so time_delta): corta os canais do X_decoder e reduz
+    ``future_indices``/``future_covariate_names`` para o protocolo da epoca do
+    treino, mantendo avaliacao e inferencia consistentes com o modelo.
+    """
+    base_width = 2 if wrapper.decoder_mode == "direct" else 1
+    gate = 1 if getattr(wrapper, "persistence_gate", False) else 0
+    model_extra = wrapper.num_decoder_features - base_width - gate
+    seq_extra = prepared["X_decoder"].shape[2] - base_width - gate
+    if 0 <= model_extra < seq_extra:
+        prepared["X_decoder"] = prepared["X_decoder"][
+            ..., list(range(base_width + model_extra))
+        ]
+        fut = getattr(wrapper, "future_indices", None)
+        if fut:
+            wrapper.future_indices = tuple(fut)[:model_extra]
+            wrapper.future_covariate_names = tuple(
+                getattr(wrapper, "future_covariate_names", ()) or ()
+            )[:model_extra]
+    return prepared
+
+
 def predict_all_horizons(wrapper, eval_df):
     """Predict every forecast horizon for every origin inside *eval_df*.
 
@@ -559,6 +719,7 @@ def predict_all_horizons(wrapper, eval_df):
     )
     if wrapper.decoder_mode == "teacher_forcing":
         prepared["X_decoder"][:, :, 0] = prepared["X_decoder"][:, :1, 0]
+    align_decoder_channels(wrapper, prepared)
 
     predicted_scaled = wrapper.model.predict(
         [prepared["X_encoder"], prepared["X_decoder"]], verbose=0

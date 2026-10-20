@@ -1,4 +1,4 @@
-"""Gera o relatório HTML do estudo de features (data/results/features_study/)."""
+"""Gera o relatório HTML do estudo de features (reports/resultados/features_study/)."""
 import json
 import sys
 from pathlib import Path
@@ -14,7 +14,7 @@ import pandas as pd
 
 from src import common
 
-OUT = PROJECT_ROOT / "data/results/features_study"
+OUT = PROJECT_ROOT / "reports/resultados/features_study"
 IMG = OUT / "img"
 IMG.mkdir(parents=True, exist_ok=True)
 
@@ -433,5 +433,5 @@ tests/feature_sets_validation.py (validação). Métricas cruas em
 data/results/features_study/study_tables.json e pipeline/tmp/fs_*/metrics.json.</p>
 </body></html>"""
 
-(OUT / "index.html").write_text(html, encoding="utf-8")
-print(f"Relatório: {OUT / 'index.html'}")
+(OUT / "report.html").write_text(html, encoding="utf-8")
+print(f"Relatório: {OUT / 'report.html'}")

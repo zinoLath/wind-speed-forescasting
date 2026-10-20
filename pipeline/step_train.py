@@ -61,6 +61,7 @@ def run(config):
         features=cfg.get("features"),
         decoder_mode=cfg.get("decoder_mode", "direct"),
         persistence_gate=cfg.get("persistence_gate", False),
+        normalize=bool(cfg.get("normalize", True)),
     )
     # The Optuna search can pick a batch size; explicit config wins otherwise.
     batch_size = int(hyperparameters.get("batch_size", cfg["batch_size"]))
@@ -101,6 +102,7 @@ def run(config):
         "features": list(cfg["features"]) if cfg.get("features") else None,
         "decoder_mode": getattr(wrapper, "decoder_mode", "direct"),
         "target_mode": getattr(wrapper, "target_mode", "absolute"),
+        "normalize": bool(getattr(wrapper, "normalize", True)),
         "persistence_gate": bool(getattr(wrapper, "persistence_gate", False)),
         "gate_mode": getattr(wrapper, "gate_mode", "static"),
         "context_mode": getattr(wrapper, "context_mode", "repeat"),

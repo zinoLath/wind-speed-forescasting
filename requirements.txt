@@ -9,5 +9,7 @@ jupyterlab>=3.0.0
 lightgbm>=4.0.0
 keras-tcn>=3.5.6
 statsmodels>=0.14.0
+plotext>=5.2.8,<6  # dashboard de treino no terminal (scripts/train_dashboard.py)
+markdown>=3.5       # render dos relatorios (reports/src)
 
 # Legacy only (archived notebooks/scripts in OLD/): keras-tuner, seaborn

@@ -145,13 +145,20 @@ def run(config):
         decoder_mode=metadata.get("decoder_mode", "direct"),
         create_sequences=False,
         persistence_gate=bool(metadata.get("persistence_gate", False)),
+        normalize=bool(metadata.get("normalize", True)),
     )
     wrapper.gate_mode = metadata.get("gate_mode", "static")
     wrapper.context_mode = metadata.get("context_mode", "repeat")
     wrapper.build(common.FixedHyperParameters(metadata["hyperparameters"]))
     wrapper.model.load_weights(model_path)
 
-    all_df = common.predict_all_horizons(wrapper, test_df)
+    # Same origin grid as the baselines (tests/baseline_arima_rf.py): the
+    # first origin is the first test row, with the encoder consuming the last
+    # input_steps rows of the val->test boundary. Feeding test_df alone would
+    # burn input_steps test rows as warm-up and score the DL models against
+    # a shorter actuals set (divergent implicit R2 variance).
+    eval_start = max(0, val_end - wrapper.input_steps)
+    all_df = common.predict_all_horizons(wrapper, dataset.iloc[eval_start:])
     with contextlib.redirect_stdout(io.StringIO()):
         roll_pred, roll_actual = wrapper.rolling_forecast(dataset, test_start=val_end)
 
@@ -177,6 +184,21 @@ def run(config):
         all_df["actual_raw"] = dataset[raw_col].reindex(all_df["timestamp"]).to_numpy()
         roll_df["actual_raw"] = dataset[raw_col].reindex(roll_df["timestamp"]).to_numpy()
 
+    # load_dataset regularized the series; interpolated (non-observed) grid
+    # rows must never be scored, so every headline metric below runs on the
+    # observed subset only.
+    observed = common.observed_timestamps(common.resolve(config["paths"]["dataset_csv"]))
+    if observed is not None:
+        all_df["observed"] = all_df["timestamp"].isin(observed)
+        roll_df["observed"] = roll_df["timestamp"].isin(observed)
+        print(
+            f"Excluding interpolated samples from scoring: "
+            f"{int((~all_df['observed']).sum())} all-horizon, "
+            f"{int((~roll_df['observed']).sum())} rolling"
+        )
+    all_metric = all_df if observed is None else all_df[all_df["observed"]]
+    roll_metric = roll_df if observed is None else roll_df[roll_df["observed"]]
+
     def _metrics(predicted, actual, actual_secondary=None):
         result = common.compute_metrics(actual, predicted)
         if actual_secondary is not None:
@@ -187,12 +209,17 @@ def run(config):
         return result
 
     metrics = {"model": metadata, "actuals": "raw ws100" if has_raw else "denoised target"}
-    metrics["all_horizons"] = _metrics(all_df["predicted"], all_df.get("actual_raw", all_df["actual"]), all_df["actual"])
-    metrics["persistence"] = _metrics(all_df["persistence"], all_df.get("actual_raw", all_df["actual"]), all_df["actual"])
-    metrics["rolling"] = _metrics(roll_df["predicted"], roll_df.get("actual_raw", roll_df["actual"]), roll_df["actual"])
+    metrics["all_horizons"] = _metrics(all_metric["predicted"], all_metric.get("actual_raw", all_metric["actual"]), all_metric["actual"])
+    metrics["persistence"] = _metrics(all_metric["persistence"], all_metric.get("actual_raw", all_metric["actual"]), all_metric["actual"])
+    metrics["rolling"] = _metrics(roll_metric["predicted"], roll_metric.get("actual_raw", roll_metric["actual"]), roll_metric["actual"])
+    if observed is not None:
+        metrics["synthetic_excluded"] = {
+            "all_horizons": int((~all_df["observed"]).sum()),
+            "rolling": int((~roll_df["observed"]).sum()),
+        }
 
     # Per-horizon table follows the same headline convention (raw actuals).
-    horizon_source = all_df.assign(actual=all_df["actual_raw"]) if has_raw else all_df
+    horizon_source = all_metric.assign(actual=all_metric["actual_raw"]) if has_raw else all_metric
     per_horizon_df = common.horizon_metrics(horizon_source)
     metrics["by_horizon"] = per_horizon_df.to_dict(orient="records")
 

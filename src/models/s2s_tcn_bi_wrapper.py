@@ -15,8 +15,8 @@ from tcn import TCN
 from .seq2seq_wrapper import Seq2SeqWrapper
 from .layers import apply_persistence_gate
 from .s2s_transformer_wrapper import make_learning_rate
-from .tcn_hp import tcn_hyperparameters, TCN_RANGES
-from .losses import horizon_weighted_mse, LOSS_NAME
+from .tcn_hp import tcn_hyperparameters
+from .losses import horizon_weighted_mse, itilde_q, LOSS_NAME, ITILDE_Q_NAME
 
 
 class S2STCNBidirectionalWrapper(Seq2SeqWrapper):
@@ -27,13 +27,24 @@ class S2STCNBidirectionalWrapper(Seq2SeqWrapper):
     def build(self, hp):
         self._require_prepared()
 
-        self.lr_schedule_mode = "constant"
+        self.lr_schedule_mode = getattr(self, "schedule_mode_override", "constant")
+        schedule_steps = (getattr(self, "schedule_total_steps", None)
+                          if self.lr_schedule_mode == "warmup_cosine" else None)
         learning_rate = make_learning_rate(
-            hp, lr_min=1e-4, lr_max=1e-2, lr_default=0.003969484893321028,
+            hp, schedule_total_steps=schedule_steps,
+            lr_min=1e-4, lr_max=1e-2, lr_default=0.003969484893321028,
         )
         weight_decay = hp.Choice('weight_decay', [0.0, 1e-4], default=0.0)
-        loss = horizon_weighted_mse(self.output_steps)
-        self.loss = LOSS_NAME
+        _lmode = getattr(self, "loss_mode_override", None)
+        if _lmode == "mse":
+            loss = "mse"
+            self.loss = "mse"
+        elif _lmode == "itilde_q":
+            loss = itilde_q(self.output_steps)
+            self.loss = ITILDE_Q_NAME
+        else:
+            loss = horizon_weighted_mse(self.output_steps)
+            self.loss = LOSS_NAME
 
         if weight_decay:
             optimizer = AdamW(learning_rate=learning_rate, weight_decay=weight_decay)
@@ -42,17 +53,24 @@ class S2STCNBidirectionalWrapper(Seq2SeqWrapper):
 
         # A single shared filter count feeds both encoder and decoder.
         shared_filters = hp.Int(
-            "filters", 32, TCN_RANGES["filters"]["max_filters"], step=16, default=64
+            "filters", 48, getattr(self, "filters_max", 252), step=4,
+            default=64
         )
+        # Modo estático de dilatações (round 3): opt-in via atributo.
+        static = getattr(self, "static_dilations", None) or {}
         encoder_tcn_hp = tcn_hyperparameters(
             hp, "encoder", filters=64, kernel_size=2, nb_stacks=1,
             dropout_rate=0.2, dilation_rate=2,
             min_receptive_field=self.input_steps, filters_value=shared_filters,
+            static_dilations=static.get("encoder"),
+            depth_range=static.get("encoder_depth"),
         )
         decoder_tcn_hp = tcn_hyperparameters(
             hp, "decoder", filters=64, kernel_size=2, nb_stacks=2,
             dropout_rate=0.0, dilation_rate=1,
             min_receptive_field=self.output_steps, filters_value=shared_filters,
+            static_dilations=static.get("decoder"),
+            depth_range=static.get("decoder_depth"),
         )
 
         encoder_inputs = Input(

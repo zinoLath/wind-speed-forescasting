@@ -5,7 +5,9 @@ same data, split and rolling-forecast protocol as the pipeline's evaluate
 stage, so the numbers land on the same table as the deep models:
 
 - dataset: ``data/dataset.csv`` loaded through ``common.load_dataset``
-  (the same cyclic sin/cos features the seq2seq encoders consume);
+  (the same cyclic sin/cos features the seq2seq encoders consume; the series
+  is regularized to the 10-min grid and interpolated rows are excluded from
+  scoring — ``observed_timestamps`` — matching the deep-model pipeline);
 - split: chronological 75/20/5 via ``common.split_dataset``;
 - target: RAW ``ws100`` (headline convention; no wavelet smoothing —
   denoising is part of the deep models' method, not of the baselines);
@@ -251,11 +253,20 @@ def main():
     out_dir = common.resolve(args.out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
 
+    # load_dataset regularized the series; interpolated rows are never scored
+    # (the DL pipeline applies the same rule), only saved for inspection.
+    observed = common.observed_timestamps(dataset_path)
+    if observed is not None:
+        frame["observed"] = frame["timestamp"].isin(observed)
+    score_frame = frame if observed is None else frame[frame["observed"]]
+    if observed is not None:
+        print(f"scoring excludes {len(frame) - len(score_frame)} interpolated sample(s)")
+
     per_horizon_frames = []
     for model in ("arima", "rf", "persistence"):
         if model not in frame.columns:
             continue
-        model_frame = frame.rename(columns={model: "predicted"})
+        model_frame = score_frame.rename(columns={model: "predicted"})
         if "persistence" not in model_frame.columns:
             # horizon_metrics expects the persistence reference column.
             model_frame["persistence"] = model_frame["predicted"]
@@ -291,6 +302,8 @@ def main():
         "seed": args.seed,
         "protocol": "origins from val_end; history = everything before the origin; persistence on the same grid",
     }
+    if observed is not None:
+        results["config"]["synthetic_excluded"] = int(len(frame) - len(score_frame))
     common.write_json(out_dir / "metrics.json", results)
     print(f"Results saved to {out_dir}")
     return results

@@ -1,8 +1,8 @@
 """Gera o HTML de investigação dos resultados anômalos da sessão.
 
 Coleta os metrics.json de todas as variantes trained_compare_*, produz
-gráficos (PNG) e monta um site estático separado do relatório principal:
-    data/results/investigacao/index.html
+gráficos (PNG) e monta o relatório do hub:
+    reports/resultados/investigacao/report.html
 
 Uso: python tests/build_investigacao.py
 """
@@ -16,7 +16,7 @@ import numpy as np
 import pandas as pd
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-OUT = PROJECT_ROOT / "data" / "results" / "investigacao"
+OUT = PROJECT_ROOT / "reports" / "resultados" / "investigacao"
 IMG = OUT / "img"
 IMG.mkdir(parents=True, exist_ok=True)
 
@@ -434,7 +434,7 @@ persistência, R² −2.78).</p>
 · carregamento: <code>python scripts/load_experiment_model.py &lt;dir&gt; --rolling --next36</code>
 · dados brutos: <code>runs.csv</code>.</p>
 </body></html>"""
-    out = OUT / "index.html"
+    out = OUT / "report.html"
     out.write_text(html, encoding="utf-8")
     print(f"HTML de investigação: {out}")
 

@@ -6,7 +6,7 @@ Parte B — redundância: matriz de correlação + clustering hierárquico.
 Parte C — importância multivariada: RandomForest determinístico (seed fixa)
           treinado só no split de treino, permutation importance na validação.
 
-Saídas: data/results/features_study/{study_tables.json, img/*.png}
+Saídas: reports/resultados/features_study/{study_tables.json, img/*.png}
 """
 import json
 import sys
@@ -28,7 +28,7 @@ from sklearn.inspection import permutation_importance
 from src import common
 from src.utils import wavelet_denoising
 
-OUT = PROJECT_ROOT / "data/results/features_study"
+OUT = PROJECT_ROOT / "reports/resultados/features_study"
 IMG = OUT / "img"
 IMG.mkdir(parents=True, exist_ok=True)
 

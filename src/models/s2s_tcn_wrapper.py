@@ -1,5 +1,4 @@
 import tensorflow as tf
-from tensorflow.keras import backend as K
 from tensorflow.keras.models import Model
 from tensorflow.keras.layers import (
     Input,
@@ -15,8 +14,8 @@ from tcn import TCN
 from .seq2seq_wrapper import Seq2SeqWrapper
 from .layers import apply_persistence_gate
 from .s2s_transformer_wrapper import make_learning_rate
-from .tcn_hp import tcn_hyperparameters, TCN_RANGES
-from .losses import horizon_weighted_mse, LOSS_NAME
+from .tcn_hp import tcn_hyperparameters
+from .losses import horizon_weighted_mse, itilde_q, LOSS_NAME, ITILDE_Q_NAME
 
 
 class S2STCNWrapper(Seq2SeqWrapper):
@@ -27,13 +26,24 @@ class S2STCNWrapper(Seq2SeqWrapper):
     def build(self, hp):
         self._require_prepared()
 
-        self.lr_schedule_mode = "constant"
+        self.lr_schedule_mode = getattr(self, "schedule_mode_override", "constant")
+        schedule_steps = (getattr(self, "schedule_total_steps", None)
+                          if self.lr_schedule_mode == "warmup_cosine" else None)
         learning_rate = make_learning_rate(
-            hp, lr_min=1e-4, lr_max=1e-2, lr_default=0.0026677478212305725,
+            hp, schedule_total_steps=schedule_steps,
+            lr_min=1e-4, lr_max=1e-2, lr_default=0.0026677478212305725,
         )
         weight_decay = hp.Choice('weight_decay', [0.0, 1e-4], default=0.0)
-        loss = horizon_weighted_mse(self.output_steps)
-        self.loss = LOSS_NAME
+        _lmode = getattr(self, "loss_mode_override", None)
+        if _lmode == "mse":
+            loss = "mse"
+            self.loss = "mse"
+        elif _lmode == "itilde_q":
+            loss = itilde_q(self.output_steps)
+            self.loss = ITILDE_Q_NAME
+        else:
+            loss = horizon_weighted_mse(self.output_steps)
+            self.loss = LOSS_NAME
 
         if weight_decay:
             optimizer = AdamW(learning_rate=learning_rate, weight_decay=weight_decay)
@@ -42,26 +52,25 @@ class S2STCNWrapper(Seq2SeqWrapper):
 
         # A single shared filter count feeds both encoder and decoder.
         shared_filters = hp.Int(
-            "filters", 32, TCN_RANGES["filters"]["max_filters"], step=16, default=48
+            "filters", 48, getattr(self, "filters_max", 252), step=4,
+            default=48
         )
+        # Modo estático de dilatações (round 3): opt-in via atributo.
+        static = getattr(self, "static_dilations", None) or {}
         encoder_tcn_hp = tcn_hyperparameters(
             hp, "encoder", filters=48, kernel_size=2, nb_stacks=1,
             dropout_rate=0.4, dilation_rate=4,
             min_receptive_field=self.input_steps, filters_value=shared_filters,
+            static_dilations=static.get("encoder"),
+            depth_range=static.get("encoder_depth"),
         )
         decoder_tcn_hp = tcn_hyperparameters(
             hp, "decoder", filters=48, kernel_size=2, nb_stacks=1,
             dropout_rate=0.0, dilation_rate=4,
             min_receptive_field=self.output_steps, filters_value=shared_filters,
+            static_dilations=static.get("decoder"),
+            depth_range=static.get("decoder_depth"),
         )
-        # How the encoder summary is injected into the decoder: mean pooling
-        # over the whole window, the most recent step, or both concatenated.
-        # "mean" keeps the historical behaviour; "last" mirrors the LSTM
-        # family's final-state conditioning.
-        context_pooling = hp.Choice(
-            'context_pooling', ['mean', 'last', 'mean_last'], default='mean'
-        )
-
         encoder_inputs = Input(
             shape=(self.input_steps, self.num_encoder_features), name='encoder_inputs'
         )
@@ -79,19 +88,13 @@ class S2STCNWrapper(Seq2SeqWrapper):
 
         encoder_dim = encoder_tcn_hp['filters']
 
-        if context_pooling == 'mean':
-            encoder_context = Lambda(
-                lambda x: K.mean(x, axis=1), name='encoder_context'
-            )(encoder_outputs)
-        elif context_pooling == 'last':
-            encoder_context = Lambda(
-                lambda x: x[:, -1, :], name='encoder_context'
-            )(encoder_outputs)
-        else:
-            encoder_context = Concatenate(name='encoder_context')([
-                Lambda(lambda x: K.mean(x, axis=1), name='encoder_context_mean')(encoder_outputs),
-                Lambda(lambda x: x[:, -1, :], name='encoder_context_last')(encoder_outputs),
-            ])
+        # Direct encoder->decoder mapping: the encoder's last step conditions
+        # the decoder — no context pooling. Aligned with the bidirectional TCN
+        # and the LSTM family's final-state conditioning ('mean' pooling used
+        # to blur the most recent steps and was removed from the search space).
+        encoder_context = Lambda(
+            lambda x: x[:, -1, :], name='encoder_context'
+        )(encoder_outputs)
         encoder_context_repeated = RepeatVector(
             self.output_steps, name='encoder_context_repeated'
         )(encoder_context)
