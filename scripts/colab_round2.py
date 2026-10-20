@@ -123,24 +123,32 @@ def cmd_plan(args):
     # HEAVY/LIGHT + Longest Processing Time.
     assign = cfg.get("assign")
     if assign:
-        colab_list = list(assign.get("colab", []))
-        kaggle_list = list(assign.get("kaggle", []))
+        def _groups(seq):
+            # cada elemento pode ser um wrapper ("tcn") ou um grupo
+            # (["lstm", "tcn_bi"]); 1 grupo = 1 GPU (notebook/kernel).
+            return [list(x) if isinstance(x, (list, tuple)) else [x]
+                    for x in seq]
+
+        colab_groups = _groups(assign.get("colab", []))
+        kaggle_groups = _groups(assign.get("kaggle", []))
         local_list = list(assign.get("local", []))
-        assigned = set(colab_list) | set(kaggle_list) | set(local_list)
-        if assigned != set(wrappers):
+        flat = [w for g in colab_groups + kaggle_groups for w in g] + local_list
+        if sorted(flat) != sorted(wrappers):
             raise SystemExit(
                 "assign do config nao cobre os wrappers do estudo:\n"
-                f"  config: {sorted(wrappers)}\n  assign: {sorted(assigned)}"
+                f"  config: {sorted(wrappers)}\n  assign: {sorted(flat)}"
             )
         pool = []
-        for i, wrapper in enumerate(colab_list):
+        for i, group in enumerate(colab_groups):
             pool.append({"worker": f"colab-gpu{i + 1}", "backend": "colab",
-                         "wrappers": [wrapper], "cost": costs.get(wrapper, 1.0)})
-        for i, wrapper in enumerate(kaggle_list):
+                         "wrappers": group,
+                         "cost": sum(costs.get(w, 1.0) for w in group)})
+        for i, group in enumerate(kaggle_groups):
             pool.append({"worker": f"kaggle-gpu{i + 1}", "backend": "kaggle",
-                         "wrappers": [wrapper], "cost": costs.get(wrapper, 1.0)})
+                         "wrappers": group,
+                         "cost": sum(costs.get(w, 1.0) for w in group)})
         local_wrappers = list(local_list)
-        colab_gpus, kaggle_gpus = len(colab_list), len(kaggle_list)
+        colab_gpus, kaggle_gpus = len(colab_groups), len(kaggle_groups)
     else:
         heavy = [w for w in wrappers if w in HEAVY]
         light = [w for w in wrappers if w in LIGHT]
@@ -252,6 +260,13 @@ def cmd_package(args):
         for pattern in ("pipeline/*.py", "pipeline/*.json",
                         "requirements.txt", "data/dataset.csv"):
             for path in PROJECT_ROOT.glob(pattern):
+                if path.is_file():
+                    zf.write(path, path.relative_to(PROJECT_ROOT))
+        # Cache de avaliação da rodada (ex.: arima_val_cache.csv do round 4):
+        # o objetivo skill_vs_arima le este CSV dos data/results.
+        cache_dir = PROJECT_ROOT / "data" / "results" / cfg["storage_subdir"]
+        if cache_dir.is_dir():
+            for path in cache_dir.rglob("*"):
                 if path.is_file():
                     zf.write(path, path.relative_to(PROJECT_ROOT))
         # Progresso atual da rodada entra no pacote: um notebook novo pode
@@ -855,6 +870,21 @@ def cmd_kaggle(args):
                         f"{plan['study_name']} {time.strftime('%F %T')}", "--dir-mode", "zip")
         else:
             _kaggle_run("datasets", "create", "-p", str(folder), "--dir-mode", "zip")
+        # O processamento da versao e assincrono: os kernels anexam a versao
+        # VIGENTE no momento do push, entao sem este wait eles podem partir
+        # com a versao antiga do dataset (corrida vista no round 5 — kernel
+        # subiu sem o config/zip novo e morreu com FileNotFoundError).
+        for _ in range(40):
+            status = _kaggle_run("datasets", "status", full_id, check=False)
+            state = (status.stdout or "").strip().lower()
+            if "ready" in state:
+                print(f"dataset {full_id}: pronto")
+                break
+            print(f"dataset {full_id}: {state or 'processando'}; aguardando (15s)...")
+            time.sleep(15)
+        else:
+            print("[aviso] dataset ainda processando apos ~10 min; empurrando "
+                  "kernels assim mesmo (risco de anexarem a versao antiga)")
 
     from scripts.kaggle_runner import KERNEL_TEMPLATE
 

@@ -136,9 +136,9 @@ else:
     # Restaura apenas sqlites da RODADA ATUAL: o dataset acumula progresso de
     # estudos antigos (optuna_nogate, optuna_round2...), e copia-los para a
     # pasta desta rodada contaminaria o estudo novo.
-    _cfg_path = REPO / COMMAND.split("--config")[1].split()[0]
     try:
         import json as _json
+        _cfg_path = REPO / COMMAND.split("--config")[1].split()[0]
         with open(_cfg_path, encoding="utf-8") as _h:
             _study = _json.load(_h).get("optuna", {{}}).get("study_name")
     except Exception:
