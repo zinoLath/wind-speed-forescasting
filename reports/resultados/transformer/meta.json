@@ -1,0 +1,4 @@
+{
+ "title": "Transformer + Optuna + Walk-Forward",
+ "description": "Wrapper Transformer (Seq2Seq), otimização Optuna e validação walk-forward."
+}

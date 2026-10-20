@@ -1,0 +1,35 @@
+% Gerado por scripts/sbsr_tables.py em 2026-10-19 — rodada: data/results/report_8020/evaluation.json + baselines (arima_rf/metrics.json)
+
+\begin{table}[h] % use [t] para forçar a tabela ao topo
+    \centering
+    \begin{tabular}{|c|c|c|c|c|}
+    \hline
+    \textbf{Método} & \textbf{R²} & \textbf{MSE} & \textbf{MAE} & \textbf{RMSE} \\ \hline
+    TCN & 0,514 & 1,314 & 0,862 & 1,146 \\ \hline
+    ARIMA & 0,508 & 1,329 & 0,881 & 1,153 \\ \hline
+    Random Forest & 0,418 & 1,572 & 0,939 & 1,254 \\ \hline
+    TCN - Bi & 0,403 & 1,615 & 0,985 & 1,271 \\ \hline
+    Persistência & 0,388 & 1,653 & 0,969 & 1,286 \\ \hline
+    LSTM & 0,279 & 1,948 & 1,070 & 1,396 \\ \hline
+    LSTM - Bi & 0,225 & 2,094 & 1,097 & 1,447 \\ \hline
+    \end{tabular}
+    \caption{Métricas de erro observadas.}
+    \label{tab:error_all}
+\end{table}
+
+\begin{table}[h] % use [t] para forçar a tabela ao topo
+    \centering
+    \begin{tabular}{|c|c|c|c|c|}
+    \hline
+    \textbf{Método} & \textbf{R²} & \textbf{MSE} & \textbf{MAE} & \textbf{RMSE} \\ \hline
+    TCN & 0,403 & 1,618 & 0,983 & 1,272 \\ \hline
+    TCN - Bi & 0,319 & 1,843 & 1,046 & 1,358 \\ \hline
+    ARIMA & 0,316 & 1,851 & 1,056 & 1,361 \\ \hline
+    Random Forest & 0,290 & 1,921 & 1,078 & 1,386 \\ \hline
+    LSTM & 0,145 & 2,315 & 1,197 & 1,521 \\ \hline
+    LSTM - Bi & 0,135 & 2,341 & 1,173 & 1,530 \\ \hline
+    Persistência & 0,122 & 2,375 & 1,204 & 1,541 \\ \hline
+    \end{tabular}
+    \caption{Métricas de erro no último horizonte de predição.}
+    \label{tab:error_h36}
+\end{table}

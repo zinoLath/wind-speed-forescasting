@@ -1,0 +1,4 @@
+{
+ "title": "A/B: persistence gate estático × dinâmico",
+ "description": "Experimento A/B do persistence gate (off × estático × dinâmico): MAE por horizonte, rolling por modelo e comportamento do gate."
+}

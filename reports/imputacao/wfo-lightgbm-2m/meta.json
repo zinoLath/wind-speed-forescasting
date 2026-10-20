@@ -1,0 +1,4 @@
+{
+ "title": "WFO LightGBM — ablação de janela (2 meses)",
+ "description": "Variação do benchmark WFO imputado por LightGBM com janela de treino de 2 meses civis (Bi-LSTM, TCN-Bi, ARIMA)."
+}

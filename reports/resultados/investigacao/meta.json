@@ -1,0 +1,4 @@
+{
+ "title": "Investigação dos resultados anômalos",
+ "description": "Consolidação das execuções da sessão (TCN, TCN_Bi, LSTM): não-determinismo do treino, val_loss × teste e previsões rolling por variante."
+}
