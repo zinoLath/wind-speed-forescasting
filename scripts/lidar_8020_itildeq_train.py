@@ -1,5 +1,6 @@
-"""80/20 rodada mista — LSTM com HPs do HPO 80/20 + loss ITILDE-Q; TCN com HPs
-canônicos + dilatações estáticas até 36 passos + loss MSE pura.
+"""80/20 rodada mista — HPs dos vencedores promovidos da Optuna Round 5
+(pipeline/tmp/optuna/, combinação canônica do artigo); LSTM com loss
+ITILDE-Q e TCN com MSE puro + dilatações estáticas C′.
 
 Protocolo comum (idêntico ao canônico 80/20): split 80/20 sem validação, 60
 épocas fixas, seed 42, janela 72 → 36 passos, alvo ``ws100_wavelet`` (sym18
@@ -7,14 +8,17 @@ nível 2), métricas contra o ``ws100`` bruto.
 
 O que muda por família:
 
-- **LSTM / LSTM-Bi**: hiperparâmetros do estudo Optuna 80/20
-  (``data/results/lstm_hpo_8020`` e ``lstm_bi_hpo_8020``) e perda ITILDE-Q
-  (shape-aware: MSE + termos de amplitude/fase/amplificação — Lee et al.
-  2022, arXiv:2210.15050; variante Eq. 15 de Dong Sheng et al. 2026).
-- **TCN / TCN-Bi**: HPs canônicos (``pipeline/tmp/trained_8020``) e perda
-  MSE pura, mas com a sequência de dilatações estática C′ (encoder
-  ``[1,2,4,8,16,32,36]`` — o lag de 36 passos/6 h direto no campo receptivo;
-  decoder ``[1,2,4,8,16]``), idêntico a ``scripts/tcn_cprime_train.py``.
+- **HPs (todos os wrappers)**: melhor trial da Round 5 promovido
+  (``pipeline/tmp/optuna/<Seq2Seq_*>/best_trial.json``) — estudo com
+  objetivo skill bloco k=4 na validação (split 72/8/20) e o mesmo espaço
+  loss/dilatações desta rodada.
+- **LSTM / LSTM-Bi**: perda ITILDE-Q (shape-aware: MSE + termos de
+  amplitude/fase/amplificação — Lee et al. 2022, arXiv:2210.15050;
+  variante Eq. 15 de Dong Sheng et al. 2026).
+- **TCN / TCN-Bi**: perda MSE pura com a sequência de dilatações estática
+  C′ (encoder ``[1,2,4,8,16,32,36]`` — o lag de 36 passos/6 h direto no
+  campo receptivo; decoder ``[1,2,4,8,16]``); a PROFUNDIDADE (prefixo das
+  dilatações) vem do HP da round 5.
 
 O patch de perda é feito pelo atributo ``loss_mode_override`` dos wrappers
 (código canônico intocado).
@@ -41,33 +45,30 @@ from src.models.tcn_hp import STATIC_DILATIONS
 SEED = 42
 WRAPPERS = ("lstm", "lstm_bi", "tcn", "tcn_bi")
 OUTPUT_DIR = common.resolve("pipeline/tmp/trained_8020_itildeq")
-CANONICAL_DIR = common.resolve("pipeline/tmp/trained_8020")
+ROUND5_DIR = common.resolve("pipeline/tmp/optuna")
 
-# HPs das LSTMs vindos do HPO 80/20 (chave do summary.json -> arquivo).
-# Os TCNs usam os HPs canônicos de ``trained_8020``.
-LSTM_HPO = {
-    "lstm": ("data/results/lstm_hpo_8020/summary.json", "lstm_hpo"),
-    "lstm_bi": ("data/results/lstm_bi_hpo_8020/summary.json", "lstm_bi_hpo_mse"),
+# HPs de TODOS os wrappers vêm dos vencedores promovidos da Optuna
+# Round 5 (pipeline/tmp/optuna/<Seq2Seq_*>/best_trial.json), que otimizou
+# exatamente esta combinação (LSTM ITILDE-Q / TCN MSE + dilatações C′).
+SEQ2SEQ_NAME = {
+    "lstm": "Seq2Seq_LSTM",
+    "lstm_bi": "Seq2Seq_LSTM_Bidirectional",
+    "tcn": "Seq2Seq_TCN",
+    "tcn_bi": "Seq2Seq_TCN_Bidirectional",
 }
 CONFIGS = {
-    "lstm": {"loss": "itilde_q", "hp_source": "hpo", "static_dilations": False},
-    "lstm_bi": {"loss": "itilde_q", "hp_source": "hpo", "static_dilations": False},
-    "tcn": {"loss": "mse", "hp_source": "canonical", "static_dilations": True},
-    "tcn_bi": {"loss": "mse", "hp_source": "canonical", "static_dilations": True},
+    "lstm": {"loss": "itilde_q", "hp_source": "round5", "static_dilations": False},
+    "lstm_bi": {"loss": "itilde_q", "hp_source": "round5", "static_dilations": False},
+    "tcn": {"loss": "mse", "hp_source": "round5", "static_dilations": True},
+    "tcn_bi": {"loss": "mse", "hp_source": "round5", "static_dilations": True},
 }
 
 
-def lstm_hp_from_hpo(wrapper_key):
-    """Hiperparâmetros do estudo Optuna 80/20 gravados no summary.json."""
-    path, section = LSTM_HPO[wrapper_key]
-    data = json.load(open(common.resolve(path), encoding="utf-8"))
-    return dict(data[section]["hp"])
-
-
-def canonical_hp(wrapper_key):
-    meta = json.load(open(CANONICAL_DIR / wrapper_key / "model.json",
-                          encoding="utf-8"))
-    return dict(meta["hyperparameters"])
+def round5_hp(wrapper_key):
+    """Hiperparâmetros do melhor trial promovido da Optuna Round 5."""
+    path = ROUND5_DIR / SEQ2SEQ_NAME[wrapper_key] / "best_trial.json"
+    data = json.load(open(path, encoding="utf-8"))
+    return dict(data["best_params"])
 
 
 WRAPPER_MODULES = {
@@ -99,6 +100,8 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--epochs", type=int, default=60)
     parser.add_argument("--seed", type=int, default=SEED)
+    parser.add_argument("--output-dir", default=str(OUTPUT_DIR),
+                        help="pasta de saída (default: trained_8020_itildeq")
     parser.add_argument("--alpha", type=float, default=0.3)
     parser.add_argument("--beta", type=float, default=0.5)
     parser.add_argument("--gamma", type=float, default=0.1)
@@ -119,10 +122,13 @@ def main():
 
     for wrapper_key in args.wrappers:
         cfg = CONFIGS[wrapper_key]
-        if cfg["hp_source"] == "hpo":
-            hyperparameters = lstm_hp_from_hpo(wrapper_key)
-        else:
-            hyperparameters = canonical_hp(wrapper_key)
+        if cfg["hp_source"] == "round5":
+            hyperparameters = round5_hp(wrapper_key)
+        else:  # fallback: HPs canônicos de trained_8020
+            meta = json.load(open(
+                common.resolve("pipeline/tmp/trained_8020") / wrapper_key
+                / "model.json", encoding="utf-8"))
+            hyperparameters = dict(meta["hyperparameters"])
 
         from keras import backend as K
 
@@ -148,9 +154,8 @@ def main():
         if cfg["loss"] == "itilde_q":
             apply_itildeq_coeffs(wrapper_key, args.alpha, args.beta, args.gamma)
         if cfg["static_dilations"]:
+            # grade C′ fixa; a PROFUNDIDADE (prefixo) vem do HP da round 5
             wrapper.static_dilations = STATIC_DILATIONS
-            hyperparameters["encoder_dil_depth"] = len(STATIC_DILATIONS["encoder"])
-            hyperparameters["decoder_dil_depth"] = len(STATIC_DILATIONS["decoder"])
 
         wrapper.build(common.FixedHyperParameters(hyperparameters))
         assert wrapper.loss == cfg["loss"], (wrapper_key, wrapper.loss)
@@ -168,7 +173,7 @@ def main():
         print(f"[{wrapper_key}] {len(losses)} epocas em {elapsed:.0f}s | "
               f"loss final={losses[-1]:.5f}")
 
-        model_dir = OUTPUT_DIR / wrapper_key
+        model_dir = Path(args.output_dir) / wrapper_key
         model_dir.mkdir(parents=True, exist_ok=True)
         wrapper.model.save(model_dir / "model.keras")
         meta = {
@@ -180,8 +185,9 @@ def main():
             "target_mode": getattr(wrapper, "target_mode", "absolute"),
             "normalize": bool(getattr(wrapper, "normalize", True)),
             "hyperparameters": hyperparameters,
-            "params_source": ("HPs do HPO 80/20 (loss itilde_q)"
-                              if cfg["hp_source"] == "hpo"
+            "params_source": ("HPs promovidos da Optuna Round 5 "
+                              "(pipeline/tmp/optuna)"
+                              if cfg["hp_source"] == "round5"
                               else "canonica 80/20 (loss mse) + dilatações C′"),
             "input_steps": 72,
             "output_steps": 36,
@@ -211,7 +217,7 @@ def main():
                                          all_df["predicted"])
         print(f"[{wrapper_key}] MSE teste={metrics['mse']:.4f}")
 
-    print(f"\nModelos: {OUTPUT_DIR}")
+    print(f"\nModelos: {args.output_dir}")
     print("Relatorio: python tests/relatorio_resultados.py --models-dir "
           "pipeline/tmp/trained_8020_itildeq --out-dir "
           "data/results/report_8020_itildeq")

@@ -179,7 +179,7 @@ def build_tables(args) -> str:
 
     header = (f"% Gerado por scripts/sbsr_tables.py em "
               f"{datetime.date.today().isoformat()} — rodada: "
-              f"{round_dir.relative_to(PROJECT_ROOT)}/evaluation.json"
+              f"{round_dir.resolve().relative_to(PROJECT_ROOT)}/evaluation.json"
               + ("" if args.no_baselines else " + baselines (arima_rf/metrics.json)"))
     return "\n\n".join([header, table_all, table_h36]) + "\n"
 
