@@ -1,0 +1,4 @@
+{
+ "title": "Benchmarks WFO com dados imputados",
+ "description": "Benchmarks walk-forward com as séries imputadas (RF, LightGBM, kNN, Kalman)."
+}

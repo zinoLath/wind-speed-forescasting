@@ -30,7 +30,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from tests.validate_impute_wind_data import find_complete_segments, load_wind_data
+from src.impute.base import find_complete_segments, load_wind_data
 from src.imputation_model_utils import (
     DIRECTION_COLUMNS,
     MODEL_NAMES,
@@ -262,7 +262,7 @@ def run_optuna(
             direction="minimize",
             sampler=optuna.samplers.TPESampler(seed=seed),
         )
-        study.optimize(objective, n_trials=trials)
+        study.optimize(objective, n_trials=trials, gc_after_trial=True)
         cached[model] = {
             "params": study.best_trial.params,
             "objective_score": float(study.best_value),

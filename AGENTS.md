@@ -1,97 +1,96 @@
 # AGENTS.md
 
-## Setup
+Seq2Seq wind speed forecasting (Keras/TensorFlow) em dados LiDAR. Este
+arquivo é o **índice do contexto**; os detalhes vivem em `agents/*.md`
+(leia o arquivo correspondente antes de trabalhar em cada área).
+
+## Mapa do contexto
+
+| Arquivo | Conteúdo |
+|---|---|
+| `agents/setup.md` | venv Python 3.10 + GPU, comandos-chave (pipeline, testes, treinos LiDAR), lint |
+| `agents/architecture.md` | wrappers seq2seq (`src/common.py:WRAPPERS`), losses, decoder direto, TCN hp, imputação |
+| `agents/data.md` | datasets, saídas do pipeline, `data/results/report*`, dashboard jsonl |
+| `agents/reports.md` | **framework `reports/`**: hub, componentes com popup LaTeX (steam/sbsr), builder, servidor, regenerar/retreinar — skill `reports-hub` |
+| `agents/articles.md` | **`articles/`**: steam/sbr/knowledge, catálogo bibtex com abstract (skill `bibtex-articles`), sincronização Overleaf (skill `articles-overleaf`), integração de report no artigo SBSR (skill `sbsr-integrate`) |
+| `agents/paper.md` | sync Overleaf do paper + hook post-commit (ponto de commit dos artigos) |
+| `agents/optuna-colab.md` | rodada distribuída Optuna (local+Colab+Kaggle); runbook completo na skill `optuna-colab` |
+| `agents/gotchas.md` | armadilhas (imports, bootstrap sys.path, sqlite Optuna, jobs em background) |
+| `findings/` | **base canônica de conhecimento** (`INDEX.md` + `knowledge/` + `playbooks/` + scripts) — fatos, números, decisões e estados consolidados; skill `canonical-findings` |
+
+## Setup rápido
 
 ```bash
-./setup_environment.sh        # creates .venv (Python 3.10), installs deps
+./setup_environment.sh           # cria .venv (Python 3.10), instala deps
 source .venv/bin/activate
-source ./scripts/tf_gpu_env.sh  # REQUIRED on Arch Linux with NVIDIA GPU
+source ./scripts/tf_gpu_env.sh   # OBRIGATÓRIO no Arch Linux com NVIDIA GPU
 ```
 
-The venv uses Python 3.10 specifically. TensorFlow 2.21 with CUDA is installed via pip.
-
-## Key Commands
+## Comandos essenciais
 
 ```bash
-# Hyperparameter search (Optuna) — GPU required
-python tests/optuna_all_hyperparameters.py --n-trials 100 --epochs 60
+python pipeline/pipeline.py                       # pipeline completo (estágios: optuna -> train -> evaluate -> impute -> walkforward)
+python pipeline/pipeline.py --stage train evaluate
+python tests/test_wrappers_build.py               # smoke test dos wrappers (tests/ são scripts standalone, sem pytest)
 
-# Walk-forward evaluation using Optuna best params
-python tests/wfo_optuna.py
+# Relatórios (hub em reports/_site/ — sempre reconstruído a cada build)
+python reports/src/builder.py build               # gera hub + todas as páginas
+python reports/src/server.py                      # http://127.0.0.1:8765/ + API regenerar/retreinar
+python reports/lidar/8020/report.py               # reconstrói o site a partir de um relatório
 
-# Walk-forward over individual periods (older scripts, run from project root)
-python tests/wfo_periods.py
-python tests/wfo_periods-fixed.py
-python tests/wfo_periods-xyz.py
+# Treino sob a reamostragem 80/20 + relatório de resultados (skill lidar-retrain)
+python scripts/lidar_7525_train.py --train-ratio 0.80
+python tests/relatorio_resultados.py --models-dir pipeline/tmp/trained_8020 --out-dir data/results/report_8020 --no-baselines
 
-# GUI simulation (opens matplotlib window)
-./run_simulation.sh
-# NOTE: src/simulation.py does not exist — the script will fail until it is created.
+# Catálogo de artigos (índice + references.bib com abstract)
+python articles/knowledge/tools/knowledge.py build|list|search|show|bibtex
 
-# Wavelet-based imputation for short gaps in wind_data.csv
-python src/impute_wind_data.py --input data/wind_data.csv --output data/wind_data_imputed.csv
-
-# Random Forest (row-wise) imputation for wind_data.csv
-python src/impute_wind_data_rf.py --input data/wind_data.csv --output data/wind_data_imputed_rf.csv --estimators 50 --max-iter 3 --train-sample 3000
-
-# Validate imputation by injecting artificial gaps and measuring error
-python tests/validate_impute_wind_data.py --n-samples 10 --gap-lengths 1 2 3 5 10
-
-# Per-row KNN imputation validation
-python tests/validate_knn_impute.py --n-samples 10 --gap-lengths 1 2 3 5 10
-
-# Per-row Random Forest imputation validation
-python tests/validate_rf_impute.py --n-samples 10 --gap-lengths 1 2 3 5 10
-
-# Per-row LightGBM imputation validation
-python tests/validate_lgbm_impute.py --n-samples 10 --gap-lengths 1 2 3 5 10
-
-# Linear interpolation + Kalman filter (column-wise) imputation validation
-python tests/validate_kalman_impute.py --n-samples 10 --gap-lengths 1 2 3 5 10 20 36
-
-# Side-by-side comparison of KNN vs Random Forest vs LightGBM vs Kalman on the same injected gaps
-python tests/compare_imputers.py --n-samples 10 --gap-lengths 1 2 3 5 10 20 36
-
-# Detailed statistical evaluation of Random Forest imputation (CSV + plots)
-python tests/validate_rf_impute_detailed.py --n-samples 30 --gap-lengths 1 2 3 5 10 20 36
-
-# Walk-forward validation on imputed data, retraining at each window
-python tests/wfo_imputed.py --models lstm lstm_bi tcn tcn_bi --train-window-days 30 --test-window-days 7 --step-days 7
+# Ponto de commit/push Overleaf dos artigos (figuras)
+python scripts/articles_sync.py list|sync|init|push-all
 ```
 
-There are no linter, formatter, type-checker, or test runner commands configured. No CI workflows exist.
+Não há linter/formatter/type-checker/test runner configurados nem CI;
+`pyflakes` e `radon` são úteis no desenvolvimento (fora do requirements.txt).
 
-## Architecture
+## Visão das pastas novas
 
-Seq2Seq wind speed forecasting models (Keras/TensorFlow). All models inherit from `Seq2SeqWrapper` (`src/models/seq2seq_wrapper.py`), which provides `prepare()`, `build()`, `fit()`, `predict()`, and `rolling_forecast()`.
+- **`reports/`** — relatórios padronizados por categoria (treinamento,
+  lidar, resultados, imputação, protocolo). Cada pasta tem o código gerador
+  + arquivos usados. Todo inserível (figura/tabela) tem botão **LaTeX**
+  (popup com formatos steam/sbsr/genérico, label `fig:`/`tab:` e legenda
+  editáveis). Detalhes: `agents/reports.md`.
+- **`articles/`** — `steam/` (relatório STEAM, classe imc), `sbr/` (artigo
+  SBSR, clone git Overleaf), `knowledge/` (coleção completa de artigos da
+  máquina + trabalhos próprios, com `index.md` e `references.bib` gerados —
+  bib sempre com abstract; skill `bibtex-articles` para consultas).
+  Detalhes: `agents/articles.md`.
+- **`agents/`** — este arquivo registra o contexto completo; os arquivos
+  acima são a fonte detalhada por área.
 
-Model variants in `src/models/`:
-- `S2SLSTMWrapper` — unidirectional LSTM encoder + attention
-- `S2SLSTMBidirectionalWrapper` — bidirectional LSTM encoder + attention
-- `S2STCNWrapper` — TCN encoder + attention
-- `S2STCNBidirectionalWrapper` — bidirectional TCN encoder + attention
-- `S2SLSTMBidirectionalWrapperAttentionExtract` — variant that also extracts attention scores
+## Regras de ouro (resumo — detalhes em agents/gotchas.md)
 
-All wrappers use Teacher Forcing. The decoder always receives 1 feature (the target column).
+- **Consulte e mantenha a base canônica** (skill `canonical-findings`):
+  antes de responder/decidir com fatos do projeto, comece por
+  `findings/INDEX.md`; todo conhecimento importante descoberto vira/atualiza
+  um finding em `findings/knowledge/` + linha no INDEX; valide com
+  `python findings/scripts/findings.py check` antes de encerrar.
 
-Wavelet denoising utility: `src/utils.py:wavelet_denoising()` — uses `sym18` wavelet, default level 2.
-
-## Data
-
-- Raw data: `data/dataset.csv` (gitignored, not in repo)
-- Period CSVs: `data/series_list/complete_period_*.csv`
-- Period summary: `data/complete_periods_summary.json`
-- Results written to: `data/results/optuna/<WrapperName>/` and `data/results/wfo_optuna/<WrapperName>/`
-
-`tests/` files are **not** pytest/unittest — they are standalone scripts meant to be run directly with `python`.
-
-## Important Gotchas
-
-- **`tests/wfo_periods*.py` must be run from the project root.** They use relative paths like `../data/` and `Path.cwd().resolve().parent`.
-- **`tests/optuna_all_hyperparameters.py`** is the primary entry point for model training. It manages `sys.path` and GPU runtime setup internally.
-- **CUDA library loading** is duplicated across scripts (`configure_tensorflow_gpu_runtime`). If you modify GPU setup, update all copies in `tests/wfo_periods*.py` and `tests/optuna_all_hyperparameters.py`.
-- The `build()` method returns `NotImplementedError` (as an expression, not raised) in `Seq2SeqWrapper` — subclasses must override it.
-- Data files (`*.csv`, `*.h5`, `*.keras`) are gitignored. The models directory is also gitignored.
-- The `OLD/` directory contains archived code; ignore it.
-- **`src/simulation.py` is referenced by `run_simulation.sh` and README but does not exist.**
-- `FixedHyperParameters._get()` in `tests/wfo_optuna.py:33` was fixed: it now raises `KeyError` only when the param is **missing**.
+- **Todo relatório vive em `reports/<categoria>/<nome>/`** (página, análise
+  pós-modelo, `report.py`/`report.md`/`report.html` + figuras). Nunca criar
+  relatório em `docs/`, na raiz ou em `data/results/` — `docs/` é
+  documentação e `data/results/` guarda artefatos de dados, não relatórios.
+  Geradores (`tests/`, `scripts/`) que produzem relatório escrevem
+  direto em `reports/`.
+- **Estado dos relatórios**: `reports/state.json` é **gerado** (não editar
+  à mão) — criado/regenerado/favorito/título por relatório; datas no hub,
+  favoritos (★) e renomear (✏) via servidor (`/api/state`,
+  `/api/favorite`, `/api/rename`) com fallback localStorage.
+- `src/common.py` não pode ter efeitos colaterais de import (TF lazy).
+- Arquivos sob `pipeline/` e `reports/` precisam do bootstrap `sys.path`
+  para a raiz do projeto.
+- `reports/_site/`, `articles/knowledge/index.md` e
+  `articles/knowledge/references.bib` são **gerados** — regenere, nunca
+  edite à mão.
+- Pushes Overleaf são best-effort e nunca falham um commit.
+- Métricas históricas antigas (ex.: MAE 0.1589) vêm de protocolo com
+  vazamento; números honestos estão em `reports/` e `docs/`.

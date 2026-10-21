@@ -1,0 +1,231 @@
+"""Fair benchmark harness for the Seq2Seq wrappers.
+
+Trains a wrapper with fixed hyperparameters under a configurable budget and
+reports val_loss plus (optionally) walk-forward MAE/RMSE/R2 metrics on the same
+test region used by wfo_optuna.py. Results are appended to a JSONL log so that
+experiments can be tracked across cycles.
+"""
+
+import argparse
+import json
+import sys
+import time
+from pathlib import Path
+
+import numpy as np
+
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
+from src import common
+
+tf = common.setup_tensorflow()
+
+from keras import backend as K  # noqa: E402
+from keras.callbacks import EarlyStopping, ReduceLROnPlateau  # noqa: E402
+
+from src.common import (  # noqa: E402
+    FixedHyperParameters,
+    compute_metrics,
+    load_best_params,
+    load_dataset,
+    split_dataset,
+)
+from src.models.s2s_lstm_bi_wrapper import S2SLSTMBidirectionalWrapper  # noqa: E402
+from src.models.s2s_lstm_wrapper import S2SLSTMWrapper  # noqa: E402
+from src.models.s2s_tcn_bi_wrapper import S2STCNBidirectionalWrapper  # noqa: E402
+from src.models.s2s_tcn_wrapper import S2STCNWrapper  # noqa: E402
+from src.models.s2s_transformer_preln_wrapper import S2STransformerPrelnWrapper  # noqa: E402
+from src.models.s2s_transformer_wrapper import S2STransformerWrapper  # noqa: E402
+
+
+# Extends the common registry with the transformer variants benchmarked here.
+# (The autoregressive decoder lives in OLD/models/: measured strictly worse
+# and retired — see docs/estudo_transformer.md.)
+WRAPPERS = {
+    "lstm": S2SLSTMWrapper,
+    "lstm_bi": S2SLSTMBidirectionalWrapper,
+    "tcn": S2STCNWrapper,
+    "tcn_bi": S2STCNBidirectionalWrapper,
+    "transformer": S2STransformerWrapper,
+    "transformer_preln": S2STransformerPrelnWrapper,
+}
+
+
+def build_wrapper(wrapper_key, dataset, params, input_steps, output_steps, epochs, batch_size,
+                  use_schedule, decoder_mode, target_mode, seed, weight_decay=None, clipnorm=None,
+                  loss="mse", persistence_gate=False):
+    train_df, val_df, _ = split_dataset(dataset)
+    train_end = len(train_df)
+    val_end = train_end + len(val_df)
+
+    K.clear_session()
+    import random
+
+    random.seed(seed)
+    np.random.seed(seed)
+    tf.random.set_seed(seed)
+
+    # Inject the CLI-driven choices into the hyperparameter dict so build()
+    # compiles exactly what was requested on the command line.
+    params = dict(params)
+    params["loss"] = loss
+    params["lr_schedule"] = "warmup_cosine" if use_schedule else "constant"
+    if weight_decay:
+        params["weight_decay"] = weight_decay
+
+    wrapper = WRAPPERS[wrapper_key]()
+    wrapper.prepare(
+        train_df,
+        val_df,
+        input_steps=input_steps,
+        output_steps=output_steps,
+        target_col="ws100_wavelet",
+        denoise=["ws100"],
+        denoise_level=2,
+        decoder_mode=decoder_mode,
+        target_mode=target_mode,
+        persistence_gate=persistence_gate,
+    )
+    if use_schedule and hasattr(wrapper, "schedule_total_steps"):
+        n_train = len(train_df)
+        steps_per_epoch = int(np.ceil(n_train / batch_size))
+        wrapper.schedule_total_steps = steps_per_epoch * epochs
+    if weight_decay:
+        wrapper.weight_decay = weight_decay
+    if clipnorm:
+        wrapper.clipnorm = clipnorm
+    wrapper.loss = loss
+
+    wrapper.build(FixedHyperParameters(params))
+
+    callbacks = [
+        EarlyStopping(monitor="val_loss", patience=8, restore_best_weights=True),
+    ]
+    if not use_schedule:
+        # With a warmup+cosine schedule the LR annealing is already handled;
+        # ReduceLROnPlateau would fight the schedule.
+        callbacks.append(
+            ReduceLROnPlateau(monitor="val_loss", factor=0.5, patience=4, min_lr=1e-6)
+        )
+
+    history = wrapper.fit(
+        epochs=epochs,
+        batch_size=batch_size,
+        verbose=0,
+        callbacks=callbacks,
+        use_validation=True,
+    )
+    return wrapper, train_end, val_end, history
+
+
+def evaluate_wfo(wrapper, dataset, test_start):
+    started_at = time.perf_counter()
+    predictions, actuals = wrapper.rolling_forecast(dataset, test_start=test_start)
+    elapsed = time.perf_counter() - started_at
+    predictions = predictions.ravel()
+    actuals = actuals.ravel()
+    metrics = {
+        "prediction_time_sec": elapsed,
+        **compute_metrics(actuals, predictions),
+    }
+    return metrics, predictions, actuals
+
+
+def parse_args():
+    parser = argparse.ArgumentParser(description="Fair benchmark of Seq2Seq wrappers.")
+    parser.add_argument("--wrapper", choices=WRAPPERS, required=True)
+    parser.add_argument("--params", type=str, default=None,
+                        help='JSON dict of fixed hyperparameters.')
+    parser.add_argument("--from-optuna", action="store_true",
+                        help="Load best params from data/results/optuna for this wrapper.")
+    parser.add_argument("--epochs", type=int, default=40)
+    parser.add_argument("--batch-size", type=int, default=32)
+    parser.add_argument("--input-steps", type=int, default=72)
+    parser.add_argument("--output-steps", type=int, default=36)
+    parser.add_argument("--schedule", action="store_true",
+                        help="Enable warmup+cosine LR schedule for transformer wrappers.")
+    parser.add_argument("--no-wfo", action="store_true", help="Skip rolling forecast.")
+    parser.add_argument("--save-predictions", action="store_true")
+    parser.add_argument("--tag", type=str, default="", help="Short label for the log.")
+    parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument("--decoder-mode", choices=["teacher_forcing", "direct"], default="teacher_forcing")
+    parser.add_argument("--target-mode", choices=["absolute", "residual"], default="absolute")
+    parser.add_argument("--weight-decay", type=float, default=0.0, help="AdamW weight decay.")
+    parser.add_argument("--clipnorm", type=float, default=None, help="Global gradient norm clipping.")
+    parser.add_argument("--loss", choices=["mse", "mae", "huber"], default="mse",
+                        help="Training loss; MSE punishes large errors harder.")
+    parser.add_argument("--persistence-gate", action="store_true",
+                        help="Enable the learned per-horizon persistence gate on the output.")
+    return parser.parse_args()
+
+
+def main():
+    args = parse_args()
+    if args.params and args.from_optuna:
+        raise ValueError("Use either --params or --from-optuna, not both.")
+
+    if args.params:
+        params = json.loads(args.params)
+    else:
+        _, params = load_best_params(wrapper_name=WRAPPERS[args.wrapper]().name)
+
+    dataset = load_dataset(PROJECT_ROOT / "data" / "dataset.csv")
+    wrapper, train_end, val_end, history = build_wrapper(
+        args.wrapper, dataset, params, args.input_steps, args.output_steps,
+        args.epochs, args.batch_size, args.schedule, args.decoder_mode,
+        args.target_mode, args.seed, args.weight_decay, args.clipnorm, args.loss,
+        args.persistence_gate,
+    )
+
+    best_val_loss = float(np.min(history.history["val_loss"]))
+    train_epochs = len(history.history.get("loss", []))
+    record = {
+        "wrapper": args.wrapper,
+        "name": wrapper.name,
+        "tag": args.tag,
+        "params": params,
+        "epochs_budget": args.epochs,
+        "train_epochs": train_epochs,
+        "best_val_loss": best_val_loss,
+        "schedule": args.schedule,
+        "decoder_mode": args.decoder_mode,
+        "target_mode": args.target_mode,
+        "persistence_gate": args.persistence_gate,
+        "seed": args.seed,
+        "loss": args.loss,
+        "weight_decay": args.weight_decay,
+    }
+
+    if not args.no_wfo:
+        record["wfo"], preds, act = evaluate_wfo(wrapper, dataset, test_start=val_end)
+
+    log_path = PROJECT_ROOT / "data" / "results" / "benchmark_transformer.jsonl"
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    with log_path.open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps(record, ensure_ascii=False) + "\n")
+
+    if not args.no_wfo and args.save_predictions:
+        import pandas as pd
+        pred_path = PROJECT_ROOT / "data" / "results" / "benchmark_preds" / (
+            f"{args.wrapper}_{args.tag or 'run'}.csv"
+        )
+        pred_path.parent.mkdir(parents=True, exist_ok=True)
+        pd.DataFrame({"prediction": preds, "actual": act}).to_csv(
+            pred_path, index=False
+        )
+        print(f"predictions saved to {pred_path}")
+
+    wfo_txt = (
+        f" | MAE={record['wfo']['mae']:.4f} RMSE={record['wfo']['rmse']:.4f} "
+        f"R2={record['wfo']['r2']:.4f}"
+        if "wfo" in record
+        else ""
+    )
+    print(f"[{wrapper.name}] tag={args.tag} val_loss={best_val_loss:.6f} "
+          f"epochs={train_epochs}/{args.epochs}{wfo_txt}")
+
+
+if __name__ == "__main__":
+    main()

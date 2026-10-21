@@ -1,10 +1,8 @@
-import numpy as np
 from tensorflow.keras import backend as K
 from tensorflow.keras.models import Model
 from tensorflow.keras.layers import (
     Input,
     Bidirectional,
-    Dropout,
     Dense,
     Concatenate,
     TimeDistributed,
@@ -12,9 +10,13 @@ from tensorflow.keras.layers import (
     RepeatVector,
     Lambda,
 )
-from tensorflow.keras.optimizers import Adam
+from tensorflow.keras.optimizers import Adam, AdamW
 from tcn import TCN
 from .seq2seq_wrapper import Seq2SeqWrapper
+from .layers import apply_persistence_gate
+from .s2s_transformer_wrapper import make_learning_rate
+from .tcn_hp import tcn_hyperparameters
+from .losses import horizon_weighted_mse, itilde_q, LOSS_NAME, ITILDE_Q_NAME
 
 
 class S2STCNBidirectionalWrapper(Seq2SeqWrapper):
@@ -23,53 +25,53 @@ class S2STCNBidirectionalWrapper(Seq2SeqWrapper):
         self.name = "Seq2Seq_TCN_Bidirectional"
 
     def build(self, hp):
-        if not hasattr(self, 'train') or not hasattr(self, 'val'):
-            raise ValueError(
-                "Os dados de treinamento e validação devem ser preparados antes de construir o modelo. "
-                "Chame o método 'prepare' primeiro."
-            )
+        self._require_prepared()
 
-        learning_rate = hp.Float(
-            'learning_rate', min_value=1e-4, max_value=1e-2, sampling='LOG', default=0.003969484893321028
+        self.lr_schedule_mode = getattr(self, "schedule_mode_override", "constant")
+        schedule_steps = (getattr(self, "schedule_total_steps", None)
+                          if self.lr_schedule_mode == "warmup_cosine" else None)
+        learning_rate = make_learning_rate(
+            hp, schedule_total_steps=schedule_steps,
+            lr_min=1e-4, lr_max=1e-2, lr_default=0.003969484893321028,
         )
+        weight_decay = hp.Choice('weight_decay', [0.0, 1e-4], default=0.0)
+        _lmode = getattr(self, "loss_mode_override", None)
+        if _lmode == "mse":
+            loss = "mse"
+            self.loss = "mse"
+        elif _lmode == "itilde_q":
+            loss = itilde_q(self.output_steps)
+            self.loss = ITILDE_Q_NAME
+        else:
+            loss = horizon_weighted_mse(self.output_steps)
+            self.loss = LOSS_NAME
 
-        encoder_tcn_hp = {}
-        encoder_tcn_hp['filters'] = hp.Int(
-            'encoder_filters', min_value=32, max_value=256, step=16, default=64
-        )
-        encoder_tcn_hp['kernel_size'] = hp.Int(
-            'encoder_kernel_size', min_value=2, max_value=3, step=1, default=2
-        )
-        encoder_tcn_hp['nb_stacks'] = hp.Int(
-            'encoder_nb_stacks', min_value=1, max_value=2, step=1, default=1
-        )
-        encoder_tcn_hp['dropout_rate'] = hp.Float(
-            'encoder_dropout_rate', min_value=0.0, max_value=0.5, step=0.05, default=0.2
-        )
-        encoder_tcn_hp['dilation_rate'] = hp.Int(
-            'encoder_dilation_rate', min_value=1, max_value=5, step=1, default=2
-        )
-        encoder_tcn_hp['dilations'] = [2 ** i for i in range(encoder_tcn_hp['dilation_rate'])]
+        if weight_decay:
+            optimizer = AdamW(learning_rate=learning_rate, weight_decay=weight_decay)
+        else:
+            optimizer = Adam(learning_rate=learning_rate)
 
-        decoder_tcn_hp = {}
-        decoder_tcn_hp['filters'] = hp.Int(
-            'decoder_filters', min_value=32, max_value=128, step=16, default=80
+        # A single shared filter count feeds both encoder and decoder.
+        shared_filters = hp.Int(
+            "filters", 48, getattr(self, "filters_max", 252), step=4,
+            default=64
         )
-        decoder_tcn_hp['kernel_size'] = hp.Int(
-            'decoder_kernel_size', min_value=2, max_value=3, step=1, default=2
+        # Modo estático de dilatações (round 3): opt-in via atributo.
+        static = getattr(self, "static_dilations", None) or {}
+        encoder_tcn_hp = tcn_hyperparameters(
+            hp, "encoder", filters=64, kernel_size=2, nb_stacks=1,
+            dropout_rate=0.2, dilation_rate=2,
+            min_receptive_field=self.input_steps, filters_value=shared_filters,
+            static_dilations=static.get("encoder"),
+            depth_range=static.get("encoder_depth"),
         )
-        decoder_tcn_hp['nb_stacks'] = hp.Int(
-            'decoder_nb_stacks', min_value=1, max_value=2, step=1, default=2
+        decoder_tcn_hp = tcn_hyperparameters(
+            hp, "decoder", filters=64, kernel_size=2, nb_stacks=2,
+            dropout_rate=0.0, dilation_rate=1,
+            min_receptive_field=self.output_steps, filters_value=shared_filters,
+            static_dilations=static.get("decoder"),
+            depth_range=static.get("decoder_depth"),
         )
-        decoder_tcn_hp['dropout_rate'] = hp.Float(
-            'decoder_dropout_rate', min_value=0.0, max_value=0.5, step=0.05, default=0.0
-        )
-        decoder_tcn_hp['dilation_rate'] = hp.Int(
-            'decoder_dilation_rate', min_value=1, max_value=4, step=1, default=1
-        )
-        decoder_tcn_hp['dilations'] = [2 ** i for i in range(decoder_tcn_hp['dilation_rate'])]
-
-        optimizer = Adam(learning_rate=learning_rate)
 
         encoder_inputs = Input(
             shape=(self.input_steps, self.num_encoder_features), name='encoder_inputs'
@@ -88,13 +90,13 @@ class S2STCNBidirectionalWrapper(Seq2SeqWrapper):
             ),
             name='bidirectional_encoder_tcn',
         )(encoder_inputs)
-        encoder_outputs = Dropout(0.1, name='encoder_dropout')(encoder_outputs)
 
         encoder_dim = 2 * encoder_tcn_hp['filters']
 
-        # Mean-pooled encoder summary repeated across decoder steps.
+        # Direct encoder->decoder mapping: the encoder's last step conditions
+        # the decoder, no context pooling.
         encoder_context = Lambda(
-            lambda x: K.mean(x, axis=1), name='encoder_context'
+            lambda x: x[:, -1, :], name='encoder_context'
         )(encoder_outputs)
         encoder_context_repeated = RepeatVector(
             self.output_steps, name='encoder_context_repeated'
@@ -118,7 +120,6 @@ class S2STCNBidirectionalWrapper(Seq2SeqWrapper):
             return_sequences=True,
             name='decoder_tcn',
         )(decoder_inputs_with_context)
-        decoder_outputs = Dropout(0.1, name='decoder_dropout')(decoder_outputs)
 
         # Project decoder outputs to the encoder dimension before attention.
         decoder_query = Dense(
@@ -136,8 +137,14 @@ class S2STCNBidirectionalWrapper(Seq2SeqWrapper):
             Dense(1, activation='linear', name='output_dense'), name='output_layer'
         )
         decoder_outputs_final = decoder_dense(decoder_combined_context)
+        if self.persistence_gate:
+            decoder_outputs_final = apply_persistence_gate(
+                decoder_outputs_final, decoder_inputs, self.output_steps,
+                features=decoder_combined_context,
+                mode=getattr(self, "gate_mode", "static"),
+            )
 
         self.model = Model([encoder_inputs, decoder_inputs], decoder_outputs_final)
-        self.model.compile(optimizer=optimizer, loss='mse', metrics=['mae'])
+        self.model.compile(optimizer=optimizer, loss=loss, metrics=['mae'])
 
         return self.model

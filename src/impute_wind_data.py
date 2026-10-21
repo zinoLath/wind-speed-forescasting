@@ -138,8 +138,11 @@ def impute_short_gaps(
 
 
 def load_wind_data(path: Path) -> pd.DataFrame:
-    """Load the CSV and make the timestamp a regular DatetimeIndex."""
+    """Load the CSV, canonicalise feature names and regularise the timestamp."""
+    from src.common import canonicalize_columns
+
     df = pd.read_csv(path)
+    df = canonicalize_columns(df)
     df["timestamp"] = pd.to_datetime(df["timestamp"])
     df = df.sort_values("timestamp").reset_index(drop=True)
 

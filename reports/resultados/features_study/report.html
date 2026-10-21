@@ -1,0 +1,192 @@
+<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8">
+<title>Estudo de features — TCN</title><style>
+body{font-family:system-ui,sans-serif;max-width:1080px;margin:24px auto;padding:0 16px;color:#222}
+h1{border-bottom:3px solid #1f77b4;padding-bottom:8px} h2{margin-top:36px;color:#1f77b4}
+table{border-collapse:collapse;width:100%;font-size:13px;margin:10px 0}
+th,td{border:1px solid #ccc;padding:5px 8px;text-align:right}
+th:first-child,td:first-child{text-align:left}
+img{max-width:100%;border:1px solid #ddd;border-radius:6px;margin:8px 0}
+.reco{background:#eef7ee;border-left:5px solid #2ca02c;padding:12px 16px;border-radius:6px}
+.warn{background:#fdf6e3;border-left:5px solid #b58900;padding:10px 14px;border-radius:6px;font-size:13px}
+.note{color:#666;font-size:13px}
+</style></head><body>
+<h1>Estudo de features para a TCN</h1>
+<p class="note">Série: data/dataset.csv (7561 amostras de 10 min, split 75/20/5 cronológico).
+Alvo de treino: ws100_wavelet (sym18 nível 1); métricas contra ws100 bruto.
+Protocolo idêntico ao da investigação: TCN sem pós-dropout, seed 42, huber, norm MinMax
+(exceto quando indicado).</p>
+
+<h2>1. Metodologia</h2>
+<p>Três análises determinísticas (sem treino profundo, sem aleatoriedade de GPU):
+(Pearson/Spearman/informação mútua) de cada candidata em <i>t</i> para
+ws100 em <i>t+h</i>; <b>B</b> redundância entre candidatas (Spearman + clustering
+hierárquico); <b>C</b> importância multivariada por permutação num RandomForest
+determinístico (seed 0, 300 árvores, treinado só no split de treino, avaliado na
+validação, h=36). Depois, <b>D</b> validação empírica com 4 conjuntos treinados.</p>
+
+<h2>2. Parte A — poder preditivo univariado</h2>
+<img src="img/univariado_h36.png">
+<img src="img/decaimento_horizonte.png">
+<table>
+<tr><th>feature</th><th>r (h=1)</th><th>MI (h=1)</th>
+<th>r (h=36)</th><th>ρ (h=36)</th><th>MI (h=36)</th></tr>
+<tr><td>ws260_wavelet</td><td>+0.862</td><td>0.762</td><td>+0.507</td><td>+0.526</td><td>0.177</td></tr><tr><td>ws100_wavelet</td><td>+0.953</td><td>1.237</td><td>+0.441</td><td>+0.457</td><td>0.127</td></tr><tr><td>disp40_wavelet</td><td>+0.697</td><td>0.405</td><td>+0.356</td><td>+0.348</td><td>0.108</td></tr><tr><td>vdisp40_wavelet</td><td>+0.501</td><td>0.323</td><td>+0.168</td><td>+0.178</td><td>0.102</td></tr><tr><td>day_sin</td><td>+0.038</td><td>0.094</td><td>-0.012</td><td>-0.006</td><td>0.093</td></tr><tr><td>dir100_sin</td><td>+0.330</td><td>0.182</td><td>+0.327</td><td>+0.351</td><td>0.092</td></tr><tr><td>shear_40_260</td><td>+0.051</td><td>0.118</td><td>+0.248</td><td>+0.270</td><td>0.089</td></tr><tr><td>dir100_cos</td><td>-0.130</td><td>0.208</td><td>-0.276</td><td>-0.339</td><td>0.087</td></tr><tr><td>ws40_wavelet</td><td>+0.895</td><td>0.868</td><td>+0.356</td><td>+0.360</td><td>0.085</td></tr><tr><td>day_cos</td><td>+0.261</td><td>0.069</td><td>+0.278</td><td>+0.279</td><td>0.064</td></tr><tr><td>turb</td><td>+0.256</td><td>0.066</td><td>+0.259</td><td>+0.280</td><td>0.064</td></tr><tr><td>hour_cos</td><td>-0.089</td><td>0.031</td><td>-0.015</td><td>+0.003</td><td>0.052</td></tr><tr><td>hour_sin</td><td>-0.014</td><td>0.060</td><td>+0.090</td><td>+0.104</td><td>0.045</td></tr><tr><td>ws100_wavelet_lag24h</td><td>+0.461</td><td>0.132</td><td>+0.234</td><td>+0.240</td><td>0.042</td></tr><tr><td>v100_wavelet</td><td>-0.041</td><td>0.016</td><td>-0.079</td><td>-0.085</td><td>0.022</td></tr><tr><td>v100</td><td>-0.062</td><td>0.026</td><td>-0.062</td><td>-0.066</td><td>0.020</td></tr>
+</table>
+<p><b>Leituras:</b> em h=1 a persistência domina (r=+0.95 do ws100_wavelet).
+Em h=36 <b>ws260_wavelet passa à frente</b> (r=+0.51, MI 0.177) — o vento a 260 m
+<b>antecede</b> o de 100 m; o ciclo diurno (day_sin/cos) tem correlação ~0 mas MI alta
+(relação não-linear); dir100_sin/cos carregam sinal moderado (|r|≈0.3).</p>
+
+<h2>3. Parte B — redundância</h2>
+<img src="img/redundancia.png">
+<p>Correlações altas: ws40↔ws100 (ρ=0.93), ws100↔ws260 (ρ=0.90), mas
+<b>ws40↔ws260 apenas 0.72</b> — o par 40/260 é o mais complementar. Único cluster
+|ρ|&gt;0.95: dir100_sin↔dir100_cos (estrutura cíclica, ambos necessários).</p>
+
+<h2>4. Parte C — permutation importance (RF determinístico)</h2>
+<img src="img/perm_importance.png">
+<p>R² do RF na validação em h=36: <b>0.325</b>.</p>
+<table>
+<tr><th>feature</th><th>queda de R²</th><th>desvio</th></tr>
+<tr><td>ws260_wavelet</td><td>0.3234</td><td>±0.0157</td></tr><tr><td>day_cos</td><td>0.1383</td><td>±0.0120</td></tr><tr><td>hour_cos</td><td>0.0549</td><td>±0.0145</td></tr><tr><td>ws100_wavelet</td><td>0.0197</td><td>±0.0015</td></tr><tr><td>dir100_sin</td><td>0.0167</td><td>±0.0056</td></tr><tr><td>ws100_wavelet_lag24h</td><td>0.0155</td><td>±0.0072</td></tr><tr><td>disp40_wavelet</td><td>0.0121</td><td>±0.0040</td></tr><tr><td>v100_wavelet</td><td>0.0075</td><td>±0.0028</td></tr><tr><td>shear_40_260</td><td>0.0069</td><td>±0.0036</td></tr><tr><td>vdisp40_wavelet</td><td>0.0059</td><td>±0.0023</td></tr><tr><td>v100</td><td>0.0023</td><td>±0.0009</td></tr><tr><td>ws40_wavelet</td><td>0.0023</td><td>±0.0013</td></tr><tr><td>turb</td><td>0.0022</td><td>±0.0035</td></tr><tr><td>day_sin</td><td>-0.0034</td><td>±0.0057</td></tr><tr><td>hour_sin</td><td>-0.0101</td><td>±0.0093</td></tr><tr><td>dir100_cos</td><td>-0.0136</td><td>±0.0017</td></tr>
+</table>
+<p><b>ws260_wavelet domina</b> (queda 0.323 ao permutar), seguido do ciclo diurno
+(day_cos 0.138, hour_cos 0.055). ws100_wavelet quase não acrescenta dado ws260
+(+0.020) — fortemente subsumido. v100, lag24h, disp/vdisp: contribuições pequenas
+(&lt;0.02).</p>
+
+<h2>5. Parte D — validação empírica</h2>
+<p>Quatro conjuntos treinados (alvo ws100_wavelet sempre presente como entrada;
+"n" conta canais de entrada):</p>
+<table>
+<tr><th>conjunto</th><th>n</th><th>épocas</th><th>val MSE</th>
+<th>all MAE</th><th>all MSE</th><th>all R²</th><th>roll MAE</th><th>roll MSE</th></tr>
+<tr><td>ciclo4</td><td>5</td><td>25</td><td>1.089</td><td>1.023</td><td><b>1.637</b></td><td>+0.125</td><td><b>1.125</b></td><td>1.939</td></tr><tr><td>compl6</td><td>7</td><td>56</td><td>1.126</td><td>1.498</td><td><b>3.608</b></td><td>-0.928</td><td><b>1.295</b></td><td>3.130</td></tr><tr><td>evid10</td><td>11</td><td>27</td><td>1.093</td><td>0.916</td><td><b>1.381</b></td><td>+0.262</td><td><b>1.422</b></td><td>2.714</td></tr><tr><td>dirv100-13</td><td>13</td><td>26</td><td>1.171</td><td>0.994</td><td><b>1.645</b></td><td>+0.121</td><td><b>1.780</b></td><td>4.124</td></tr>
+</table>
+<p>Evidências anteriores da sessão (mesma receita):</p>
+<table>
+<tr><th>condição</th><th>n</th><th></th><th></th><th>all MAE</th><th>all MSE</th>
+<th>all R²</th><th>roll MAE</th><th></th></tr>
+<tr><td>9feat (ref. sessão)</td><td>10</td><td>—</td><td>—</td><td>1.057</td><td>1.771</td><td>+0.053</td><td>1.181</td><td>—</td></tr><tr><td>todas feat (ref.)</td><td>57</td><td>—</td><td>—</td><td>0.924</td><td>1.408</td><td>—</td><td>1.811</td><td>—</td></tr><tr><td>9feat+lag24h (ref.)</td><td>15</td><td>—</td><td>—</td><td>1.246</td><td>2.326</td><td>—</td><td>1.073</td><td>—</td></tr><tr><td>9feat+dir+v100 sem norm (ref.)</td><td>14</td><td>—</td><td>—</td><td>0.995</td><td>1.622</td><td>+0.133</td><td>1.373</td><td>—</td></tr>
+</table>
+<img src="img/comparacao_conjuntos.png">
+<p><b>Leituras:</b></p>
+<ul>
+<li><b>evid10 (11 canais) tem o melhor MSE all-horizons global (1.381)</b> — supera o
+todas-features (1.408) com 5× menos canais e o 9feat (1.771) com 22% menos erro.</li>
+<li><b>ciclo4 (5 canais) tem o melhor rolling da família normalizada (1.125)</b> —
+o comportamento de previsão encadeada melhora conforme o conjunto encolhe
+(1.125 → 1.422 → 1.780 com 5 → 11 → 13 canais).</li>
+<li>dirv100-13 (9feat+dir100+v100, com norm) não melhora sobre evid10 —
+<b>v100 não paga o custo</b> (MI baixa, importância de permutação ~0.008), coerente
+com a Parte C.</li>
+<li>compl6 decepcionou no all-horizons (3.61) apesar das boas escolhas univariadas —
+ver aviso sobre variância abaixo.</li>
+</ul>
+
+<div class="warn"><b>Aviso — variância da TCN:</b> cada conjunto foi treinado uma
+única vez (seed 42); execuções repetidas da mesma configuração variaram o rolling
+MAE entre 1.0 e 2.0 nesta sessão. As ordens de grandeza e os contrastes grandes
+(evid10 vs dirv100-13; ciclo4 rolling) são robustos, diferenças &lt;10% não são.</div>
+
+<h2>5b. Rolling forecast × série original</h2>
+<p>Previsão encadeada de 36 passos (6 h), avançando de hora em hora na janela de
+teste, contra a série real (preto). A janela de teste contém a queda de regime
+(vento médio diário 7.8 → 5.8 m/s).</p>
+<img src="img/rolling_vs_real.png">
+
+<h2>5c. Réplica com decoder direto (sem teacher forcing no treino)</h2>
+<p>Mesmos 4 conjuntos, mesma seed e HP, com <code>decoder_mode="direct"</code>:</p>
+<table>
+<tr><th>conjunto</th><th>n</th><th>épocas</th><th>val MSE</th>
+<th>all MAE</th><th>all MSE</th><th>all R²</th><th>roll MAE</th><th>roll MSE</th></tr>
+<tr><td>ciclo4-df</td><td>5</td><td>42</td><td>1.176</td><td>1.298</td><td><b>2.605</b></td><td>-0.393</td><td><b>1.436</b></td><td>3.298</td></tr><tr><td>compl6-df</td><td>7</td><td>35</td><td>1.143</td><td>1.266</td><td><b>2.535</b></td><td>-0.355</td><td><b>1.340</b></td><td>3.139</td></tr><tr><td>evid10-df</td><td>11</td><td>31</td><td>1.091</td><td>1.054</td><td><b>1.757</b></td><td>+0.061</td><td><b>1.255</b></td><td>2.603</td></tr><tr><td>dirv100-13-df</td><td>13</td><td>23</td><td>1.113</td><td>1.202</td><td><b>2.370</b></td><td>-0.267</td><td><b>1.281</b></td><td>2.823</td></tr>
+</table>
+<p><b>Comparação TF vs direto</b> (all MSE / roll MAE):</p>
+<ul>
+<li>ciclo4: 1.637/1.125 (TF) vs 2.605/1.436 (direto)</li>
+<li>compl6: 3.608/1.295 (TF) vs 2.535/1.340 (direto)</li>
+<li>evid10: <b>1.381</b>/1.422 (TF) vs 1.757/<b>1.255</b> (direto)</li>
+<li>dirv100-13: 1.645/1.780 (TF) vs 2.370/<b>1.281</b> (direto)</li>
+</ul>
+<p><b>Leituras:</b> o teacher forcing segue melhor no agregado all-horizons
+(3 de 4 conjuntos). O decoder direto reduz o spread entre conjuntos e melhora o
+rolling em 3 de 4 — mas <b>não recupera a amplitude da série</b>: o achatamento
+para a média é limitação de informação no horizonte de 6 h, não artefato do
+teacher forcing. evid10 permanece o melhor conjunto também sem TF (1.757) —
+a recomendação é robusta ao modo do decoder.</p>
+<img src="img/rolling_vs_real_direto.png">
+
+<h2>5d. Amostras de predição completa e comportamento por horizonte</h2>
+<p>Predições <b>completas</b> (h=1..36 a partir de uma origem): cinza = janela de
+entrada (72 passos = 12 h), tracejado = origem, preto = série real, colorido =
+trajetória prevista. Amostras: início/fim da janela, pico, vale e meio do teste.</p>
+<img src="img/samples_tf_evid10.png">
+<img src="img/samples_df_evid10.png">
+<p>Comportamento da predição em <b>horizontes fixos</b> (h = 1, 3, 6, 12, 18, 24, 30)
+para todos os conjuntos — a curva colorida é o que o modelo disse <i>h</i> passos
+antes de cada instante:</p>
+<h3>Teacher forcing</h3>
+<img src="img/horizontes_fs_ciclo4.png">
+<img src="img/horizontes_fs_compl6.png">
+<img src="img/horizontes_fs_evid8.png">
+<img src="img/horizontes_fs_dirv100_13.png">
+<h3>Decoder direto</h3>
+<img src="img/horizontes_fs2_ciclo4.png">
+<img src="img/horizontes_fs2_compl6.png">
+<img src="img/horizontes_fs2_evid8.png">
+<img src="img/horizontes_fs2_dirv100_13.png">
+<p><b>Leitura esperada:</b> em h=1–3 a predição praticamente cobre a série (segue
+a persistência); conforme h cresce perde amplitude e fase — h=18–30 já parecem
+uma versão suavizada/atrasada, ilustrando o colapso para a média discutido
+acima.</p>
+
+<h2>6. Correções do decoder testadas</h2>
+<p>Diagnóstico: na inferência o decoder recebe entrada constante (TF: zeros +
+último valor no passo 0; direto: último valor repetido), então um decoder
+convolucional só produz trajetórias constantes (repetição em pares por efeito
+de borda). Três correções testadas sobre evid10:</p>
+<table>
+<tr><th>correção</th><th>all MAE</th><th>all MSE</th><th>all R²</th>
+<th>roll MAE</th><th>ampl. trajetória</th></tr>
+<tr><td>fix1: TF + senoides futuras</td><td>1.008</td><td>1.669</td><td>+0.108</td><td>1.645</td><td>0.17</td></tr><tr><td>fix2: TF + posicional</td><td>0.953</td><td>1.470</td><td>+0.214</td><td>1.689</td><td>0.18</td></tr><tr><td>fix3: direto + senoides futuras</td><td>1.045</td><td>1.750</td><td>+0.064</td><td>1.268</td><td>0.26</td></tr>
+<tr><td>evid10 original (ref.)</td><td>0.916</td><td><b>1.381</b></td>
+<td>+0.262</td><td>1.422</td><td>0.17</td></tr>
+<tr><td><i>série real</i></td><td></td><td></td><td></td><td></td>
+<td><i>2.84</i></td></tr>
+</table>
+<img src="img/samples_fix1.png">
+<img src="img/samples_fix2.png">
+<img src="img/samples_fix3.png">
+<p><b>Conclusão:</b> nenhuma correção recuperou a amplitude (0.17–0.26 vs
+2.84 real). Com teacher forcing, o modelo aprende o atalho de 1 passo
+(copiar o decoder input real) e ignora as senoides — que na inferência não
+compensam a falta do sinal real. No modo direto + senoides (fix3) a amplitude
+melhora pouco e as métricas ficam iguais ao direto puro. <b>A trajetória reta
+não é limitação do decoder: é a ausência de sinal previsível no horizonte de
+6 h</b> — coerente com o R²=0.325 do estudo determinístico (Parte C). Caminho
+recomendado: saída probabilística/quantílica para representar a incerteza,
+em vez de forçar amplitude numa predição pontual.</p>
+
+<h2>7. Recomendação</h2>
+<div class="reco">
+<p><b>Conjunto recomendado (11 canais):</b> ws40_wavelet, ws100_wavelet (alvo),
+ws260_wavelet, disp40_wavelet, vdisp40_wavelet, dir100_sin, dir100_cos,
+hour_sin, hour_cos, day_sin, day_cos.</p>
+<ul>
+<li><b>Mantém:</b> o trio 40/100/260 m (par complementar 40↔260 + persistência do
+alvo), dispersões 40 m, direção 100 m em senoides, ciclo diurno completo.</li>
+<li><b>Remove:</b> v100 (MI/importância marginais), lag24h (importância 0.016 e MSE
+2.33 na validação anterior), ws50–ws140/alturas intermediárias (ρ&gt;0.9 com o trio),
+doy_sin/cos (série de ~52 dias não completa um ciclo anual).</li>
+<li><b>Tarefa sensível a rolling:</b> considerar ciclo4 (alvo + 4 senoides) —
+melhor rolling observado (1.125) ao custo de MSE all-horizons pior.</li>
+<li><b>Candidatos futuros com evidência:</b> turbulência local (desvio móvel do
+resíduo da wavelet) e shear 40–260 — aparecem nas análises univariadas mas não foram
+validados em treino.</li>
+</ul>
+</div>
+<p class="note">Gerado por tests/feature_study.py (análises) e
+tests/feature_sets_validation.py (validação). Métricas cruas em
+data/results/features_study/study_tables.json e pipeline/tmp/fs_*/metrics.json.</p>
+</body></html>

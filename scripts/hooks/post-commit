@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+# Best-effort sync com Overleaf apos cada commit:
+#   1) paper/figures -> projeto do paper (paper_sync)
+#   2) articles/<artigo> -> projetos Overleaf dos artigos (articles_sync)
+# Silencioso até configurado; nunca falha o commit (ver paper/README.md).
+repo_root="$(git rev-parse --show-toplevel)"
+
+if [ -f "$repo_root/paper/overleaf_remote.txt" ] || [ -n "$OVERLEAF_REMOTE" ]; then
+  python3 "$repo_root/scripts/paper_sync.py" push --auto
+fi
+
+# Artigos (steam/sbr): so age quando ha remotos configurados; best-effort.
+if [ -d "$repo_root/articles" ]; then
+  python3 "$repo_root/scripts/articles_sync.py" push-all --auto
+fi
+exit 0

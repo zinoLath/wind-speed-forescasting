@@ -1,0 +1,4 @@
+{
+ "title": "Ablação: modo de injeção de contexto no decoder",
+ "description": "RepeatVector × sem contexto × canal posicional de horizonte no decoder TCN — MAE denso e rolling por modo (repeat/none/horizon)."
+}

@@ -1,5 +1,3 @@
-import numpy as np
-from tensorflow.keras import backend as K
 from tensorflow.keras.models import Model
 from tensorflow.keras.layers import (
     Input,
@@ -11,9 +9,13 @@ from tensorflow.keras.layers import (
     Attention,
     Lambda,
 )
-from tensorflow.keras.optimizers import Adam
+from tensorflow.keras.optimizers import Adam, AdamW
 from tcn import TCN
 from .seq2seq_wrapper import Seq2SeqWrapper
+from .layers import apply_persistence_gate
+from .s2s_transformer_wrapper import make_learning_rate
+from .tcn_hp import tcn_hyperparameters
+from .losses import horizon_weighted_mse, LOSS_NAME
 
 
 class S2STCNLSTMWrapper(Seq2SeqWrapper):
@@ -22,42 +24,33 @@ class S2STCNLSTMWrapper(Seq2SeqWrapper):
         self.name = "Seq2Seq_TCN_LSTM"
 
     def build(self, hp):
-        if not hasattr(self, 'train') or not hasattr(self, 'val'):
-            raise ValueError(
-                "Os dados de treinamento e validação devem ser preparados antes de construir o modelo. "
-                "Chame o método 'prepare' primeiro."
-            )
+        self._require_prepared()
 
-        learning_rate = hp.Float(
-            'learning_rate', min_value=1e-4, max_value=1e-2, sampling='LOG', default=0.001
+        self.lr_schedule_mode = "constant"
+        learning_rate = make_learning_rate(
+            hp, lr_min=1e-4, lr_max=1e-2, lr_default=0.001,
         )
+        weight_decay = hp.Choice('weight_decay', [0.0, 1e-4], default=0.0)
+        loss = horizon_weighted_mse(self.output_steps)
+        self.loss = LOSS_NAME
 
-        encoder_tcn_hp = {}
-        encoder_tcn_hp['filters'] = hp.Int(
-            'encoder_filters', min_value=32, max_value=256, step=16, default=128
+        if weight_decay:
+            optimizer = AdamW(learning_rate=learning_rate, weight_decay=weight_decay)
+        else:
+            optimizer = Adam(learning_rate=learning_rate)
+
+        encoder_tcn_hp = tcn_hyperparameters(
+            hp, "encoder", filters=128, kernel_size=3, nb_stacks=1,
+            dropout_rate=0.1, dilation_rate=4,
+            min_receptive_field=self.input_steps,
         )
-        encoder_tcn_hp['kernel_size'] = hp.Int(
-            'encoder_kernel_size', min_value=2, max_value=3, step=1, default=3
-        )
-        encoder_tcn_hp['nb_stacks'] = hp.Int(
-            'encoder_nb_stacks', min_value=1, max_value=2, step=1, default=1
-        )
-        encoder_tcn_hp['dropout_rate'] = hp.Float(
-            'encoder_dropout_rate', min_value=0.0, max_value=0.5, step=0.05, default=0.1
-        )
-        encoder_tcn_hp['dilation_rate'] = hp.Int(
-            'encoder_dilation_rate', min_value=1, max_value=5, step=1, default=4
-        )
-        encoder_tcn_hp['dilations'] = [2 ** i for i in range(encoder_tcn_hp['dilation_rate'])]
 
         lstm_units = hp.Int(
-            'lstm_units', min_value=64, max_value=256, step=32, default=128
+            'lstm_units', min_value=32, max_value=192, step=32, default=128
         )
         decoder_dropout_rate = hp.Float(
-            'decoder_dropout_rate', min_value=0.0, max_value=0.5, step=0.05, default=0.1
+            'decoder_dropout_rate', min_value=0.0, max_value=0.3, step=0.05, default=0.1
         )
-
-        optimizer = Adam(learning_rate=learning_rate)
 
         encoder_inputs = Input(
             shape=(self.input_steps, self.num_encoder_features), name='encoder_inputs'
@@ -73,7 +66,6 @@ class S2STCNLSTMWrapper(Seq2SeqWrapper):
             return_sequences=True,
             name='encoder_tcn',
         )(encoder_inputs)
-        encoder_outputs = Dropout(0.1, name='encoder_dropout')(encoder_outputs)
 
         encoder_dim = encoder_tcn_hp['filters']
 
@@ -118,8 +110,12 @@ class S2STCNLSTMWrapper(Seq2SeqWrapper):
             Dense(1, activation='linear', name='output_dense'), name='output_layer'
         )
         decoder_outputs_final = decoder_dense(decoder_combined_context)
+        if self.persistence_gate:
+            decoder_outputs_final = apply_persistence_gate(
+                decoder_outputs_final, decoder_inputs, self.output_steps
+            )
 
         self.model = Model([encoder_inputs, decoder_inputs], decoder_outputs_final)
-        self.model.compile(optimizer=optimizer, loss='mse', metrics=['mae'])
+        self.model.compile(optimizer=optimizer, loss=loss, metrics=['mae'])
 
         return self.model

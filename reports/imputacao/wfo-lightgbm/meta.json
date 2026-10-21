@@ -1,0 +1,4 @@
+{
+ "title": "Walk-forward com série imputada por LightGBM",
+ "description": "Benchmark WFO (LSTM, Bi-LSTM, TCN, TCN-Bi, ARIMA) sobre a série ws100 imputada por LightGBM: skill vs persistência mês a mês."
+}

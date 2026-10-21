@@ -1,0 +1,233 @@
+{
+  "sources": {
+    "resultados": "data/results/report_homologado/images",
+    "baselines": "data/results/baselines/arima_rf",
+    "eda": "data/eda/images"
+  },
+  "figures": [
+    {
+      "source": "resultados/01_split_temporal.png",
+      "target": "01_split_temporal.png"
+    },
+    {
+      "source": "resultados/02_comparacao_mse_rmse.png",
+      "target": "02_comparacao_mse_rmse.png"
+    },
+    {
+      "source": "resultados/03_mse_r2.png",
+      "target": "03_mse_r2.png"
+    },
+    {
+      "source": "resultados/04_radar.png",
+      "target": "04_radar.png"
+    },
+    {
+      "source": "resultados/05_mae_por_horizonte_real.png",
+      "target": "05_mae_por_horizonte_real.png"
+    },
+    {
+      "source": "resultados/05_mae_por_horizonte_wavelet.png",
+      "target": "05_mae_por_horizonte_wavelet.png"
+    },
+    {
+      "source": "resultados/06_heatmap_mse_horizonte.png",
+      "target": "06_heatmap_mse_horizonte.png"
+    },
+    {
+      "source": "resultados/06_heatmap_r2_horizonte.png",
+      "target": "06_heatmap_r2_horizonte.png"
+    },
+    {
+      "source": "resultados/07_fan_chart.png",
+      "target": "07_fan_chart.png"
+    },
+    {
+      "source": "resultados/08_rolling_forecast_real.png",
+      "target": "08_rolling_forecast_real.png"
+    },
+    {
+      "source": "resultados/08_rolling_forecast_wavelet.png",
+      "target": "08_rolling_forecast_wavelet.png"
+    },
+    {
+      "source": "resultados/09_diagnostico_acf_pacf.png",
+      "target": "09_diagnostico_acf_pacf.png"
+    },
+    {
+      "source": "resultados/09_diagnostico_dispersao.png",
+      "target": "09_diagnostico_dispersao.png"
+    },
+    {
+      "source": "resultados/09_diagnostico_histograma.png",
+      "target": "09_diagnostico_histograma.png"
+    },
+    {
+      "source": "resultados/09_diagnostico_vies.png",
+      "target": "09_diagnostico_vies.png"
+    },
+    {
+      "source": "resultados/11_early_stopping.png",
+      "target": "11_early_stopping.png"
+    },
+    {
+      "source": "resultados/12_tempo_treinamento.png",
+      "target": "12_tempo_treinamento.png"
+    },
+    {
+      "source": "resultados/13_inferencia.png",
+      "target": "13_inferencia.png"
+    },
+    {
+      "source": "resultados/14_custo_beneficio.png",
+      "target": "14_custo_beneficio.png"
+    },
+    {
+      "source": "resultados/15_arquitetura_lstm.png",
+      "target": "15_arquitetura_lstm.png"
+    },
+    {
+      "source": "resultados/15_arquitetura_lstm_bi.png",
+      "target": "15_arquitetura_lstm_bi.png"
+    },
+    {
+      "source": "resultados/15_arquitetura_tcn.png",
+      "target": "15_arquitetura_tcn.png"
+    },
+    {
+      "source": "resultados/15_arquitetura_tcn_bi.png",
+      "target": "15_arquitetura_tcn_bi.png"
+    },
+    {
+      "source": "resultados/16_wavelet_vs_real.png",
+      "target": "16_wavelet_vs_real.png"
+    },
+    {
+      "source": "baselines/per_horizon_comparison.png",
+      "target": "per_horizon_comparison.png"
+    },
+    {
+      "source": "eda/01_visao_geral.png",
+      "target": "01_visao_geral.png"
+    },
+    {
+      "source": "eda/02_componente_vertical.png",
+      "target": "02_componente_vertical.png"
+    },
+    {
+      "source": "eda/02_direcao.png",
+      "target": "02_direcao.png"
+    },
+    {
+      "source": "eda/02_meteo_torre.png",
+      "target": "02_meteo_torre.png"
+    },
+    {
+      "source": "eda/02_serie_temporal.png",
+      "target": "02_serie_temporal.png"
+    },
+    {
+      "source": "eda/02b_dia_21_set.png",
+      "target": "02b_dia_21_set.png"
+    },
+    {
+      "source": "eda/03_perfil_vertical.png",
+      "target": "03_perfil_vertical.png"
+    },
+    {
+      "source": "eda/04_boxplot_alturas.png",
+      "target": "04_boxplot_alturas.png"
+    },
+    {
+      "source": "eda/05_histogramas.png",
+      "target": "05_histogramas.png"
+    },
+    {
+      "source": "eda/06_rosa_dos_ventos.png",
+      "target": "06_rosa_dos_ventos.png"
+    },
+    {
+      "source": "eda/07_velocidade_vertical.png",
+      "target": "07_velocidade_vertical.png"
+    },
+    {
+      "source": "eda/08_ciclo_diurno.png",
+      "target": "08_ciclo_diurno.png"
+    },
+    {
+      "source": "eda/09_variacao_mensal.png",
+      "target": "09_variacao_mensal.png"
+    },
+    {
+      "source": "eda/10_correlacao_alturas.png",
+      "target": "10_correlacao_alturas.png"
+    },
+    {
+      "source": "eda/11_scatter_alturas.png",
+      "target": "11_scatter_alturas.png"
+    },
+    {
+      "source": "eda/12_expoente_shear.png",
+      "target": "12_expoente_shear.png"
+    },
+    {
+      "source": "eda/13_direcao_velocidade_vertical.png",
+      "target": "13_direcao_velocidade_vertical.png"
+    },
+    {
+      "source": "eda/13b_direcao_vertical_corr.png",
+      "target": "13b_direcao_vertical_corr.png"
+    },
+    {
+      "source": "eda/13c_ws_vert_dir_corr.png",
+      "target": "13c_ws_vert_dir_corr.png"
+    },
+    {
+      "source": "eda/13d_dir_sin_cos_corr.png",
+      "target": "13d_dir_sin_cos_corr.png"
+    },
+    {
+      "source": "eda/14_weibull.png",
+      "target": "14_weibull.png"
+    },
+    {
+      "source": "eda/15_autocorrelacao.png",
+      "target": "15_autocorrelacao.png"
+    },
+    {
+      "source": "eda/15b_pacf.png",
+      "target": "15b_pacf.png"
+    },
+    {
+      "source": "eda/15c_diurnal_acf.png",
+      "target": "15c_diurnal_acf.png"
+    },
+    {
+      "source": "eda/15d_smoothed_acf_pacf.png",
+      "target": "15d_smoothed_acf_pacf.png"
+    },
+    {
+      "source": "eda/15e_pacf_horaria.png",
+      "target": "15e_pacf_horaria.png"
+    },
+    {
+      "source": "eda/16_meteorologia.png",
+      "target": "16_meteorologia.png"
+    },
+    {
+      "source": "eda/17_cis_qualidade_sinal.png",
+      "target": "17_cis_qualidade_sinal.png"
+    },
+    {
+      "source": "eda/18_deslocamentos.png",
+      "target": "18_deslocamentos.png"
+    },
+    {
+      "source": "eda/19_perfil_temporal.png",
+      "target": "19_perfil_temporal.png"
+    },
+    {
+      "source": "eda/20_tabela_estatisticas.png",
+      "target": "20_tabela_estatisticas.png"
+    }
+  ]
+}

@@ -1,0 +1,4 @@
+{
+ "title": "Comparativo Optuna agressiva (LSTM/LSTM-bi/TCN/TCN-bi)",
+ "description": "Comparativo com hiperparâmetros otimizados pela rodada agressiva do Optuna."
+}

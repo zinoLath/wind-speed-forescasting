@@ -1,0 +1,37 @@
+{
+  "common": {
+    "seed": 42,
+    "input_steps": 72,
+    "output_steps": 36,
+    "target_col": "ws100_wavelet",
+    "denoise": ["ws100", "ws40", "v40"],
+    "denoise_level": 1,
+    "batch_size": 32,
+    "loss": "mse",
+    "patience": 12,
+    "train_ratio": 0.75,
+    "val_ratio": 0.2,
+    "params_source": "optuna",
+    "decoder_mode": "direct",
+    "persistence_gate": false,
+    "hyperparameters": {}
+  },
+  "optuna": {
+    "enabled": true,
+    "wrappers": ["lstm", "lstm_bi", "tcn", "tcn_bi"],
+    "n_trials": 120,
+    "epochs": 100,
+    "timeout_sec": null,
+    "pruning": true,
+    "storage_subdir": "optuna_round3",
+    "study_name": "round3",
+    "drive_root": "wind-speed-colab/round3",
+    "objective": {
+      "val_blocks": 4
+    },
+    "assign": {
+      "kaggle": ["lstm_bi", "tcn_bi"],
+      "local": ["tcn", "lstm"]
+    }
+  }
+}

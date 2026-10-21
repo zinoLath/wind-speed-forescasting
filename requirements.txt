@@ -3,9 +3,13 @@ pandas>=1.1.3
 matplotlib>=3.3.2
 scikit-learn>=0.24.0
 tensorflow>=2.21.0
-keras-tuner>=1.4.7
 optuna>=4.0.0
 PyWavelets>=1.1.1
 jupyterlab>=3.0.0
-notebook>=6.1.5
 lightgbm>=4.0.0
+keras-tcn>=3.5.6
+statsmodels>=0.14.0
+plotext>=5.2.8,<6  # dashboard de treino no terminal (scripts/train_dashboard.py)
+markdown>=3.5       # render dos relatorios (reports/src)
+
+# Legacy only (archived notebooks/scripts in OLD/): keras-tuner, seaborn

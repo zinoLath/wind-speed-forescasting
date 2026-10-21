@@ -1,0 +1,4 @@
+{
+ "title": "Melhorias cíclicas do Transformer vs LSTM/TCN",
+ "description": "Features cíclicas no Transformer comparadas às baselines recorrentes/convolucionais."
+}

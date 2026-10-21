@@ -1,0 +1,274 @@
+"""Stage: evaluate a trained model on the forecast dataset.
+
+Loads a saved model (``model.keras`` + ``model.json``) from ``pipeline/tmp/``
+by default, or from any path given in the config (``overload`` option), and
+measures its performance on the held-out test portion of ``dataset.csv``.
+
+Outputs predictions and metrics as CSVs/JSON, plus plots:
+  - all-horizon predictions (every forecast origin over the test period)
+  - rolling forecast (one-step-ahead at the forecast horizon)
+  - persistence baseline
+"""
+
+import argparse
+import contextlib
+import io
+import json
+from pathlib import Path
+
+import sys
+
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
+import matplotlib
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
+import pandas as pd
+
+from src import common
+from pipeline import config as config_module
+
+STAGE = "evaluate"
+
+
+def _plot_evaluation(roll_df, all_df, per_horizon, output_dir):
+    """Generate the evaluation plots (using raw actuals when available)."""
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    actual_col = "actual_raw" if "actual_raw" in all_df.columns else "actual"
+    roll_actual_col = "actual_raw" if "actual_raw" in roll_df.columns else "actual"
+
+    fig, ax = plt.subplots(figsize=(16, 5))
+    ax.plot(roll_df["timestamp"], roll_df[roll_actual_col], label="actual", alpha=0.8)
+    ax.plot(roll_df["timestamp"], roll_df["predicted"], label="predicted", alpha=0.8)
+    ax.set_title("Rolling forecast vs actual (forecast horizon)")
+    ax.set_xlabel("Timestamp")
+    ax.set_ylabel("Wind speed (m/s)")
+    ax.legend()
+    ax.grid(True)
+    fig.tight_layout()
+    fig.savefig(output_dir / "rolling_forecast_timeseries.png", dpi=150)
+    plt.close(fig)
+
+    fig, axes = plt.subplots(1, 2, figsize=(14, 5))
+    per_horizon.plot(x="horizon", y="mae", ax=axes[0], marker="o", legend=False)
+    axes[0].set_title("MAE by forecast horizon")
+    axes[0].set_xlabel("Horizon (timesteps)")
+    axes[0].grid(True)
+    per_horizon.plot(x="horizon", y="rmse", ax=axes[1], marker="o", legend=False)
+    axes[1].set_title("RMSE by forecast horizon")
+    axes[1].set_xlabel("Horizon (timesteps)")
+    axes[1].grid(True)
+    fig.tight_layout()
+    fig.savefig(output_dir / "per_horizon_metrics.png", dpi=150)
+    plt.close(fig)
+
+    errors = all_df["predicted"] - all_df[actual_col]
+    fig, ax = plt.subplots(figsize=(10, 5))
+    ax.hist(errors, bins=60, edgecolor="black")
+    ax.axvline(0, color="red", linestyle="--")
+    ax.set_title("Prediction error distribution")
+    ax.set_xlabel("Error (predicted - actual)")
+    ax.set_ylabel("Count")
+    fig.tight_layout()
+    fig.savefig(output_dir / "error_histogram.png", dpi=150)
+    plt.close(fig)
+
+    fig, ax = plt.subplots(figsize=(8, 8))
+    ax.scatter(all_df[actual_col], all_df["predicted"], s=2, alpha=0.4)
+    lims = [min(all_df[[actual_col, "predicted"]].min()), max(all_df[[actual_col, "predicted"]].max())]
+    ax.plot(lims, lims, color="red", linestyle="--", label="perfect fit")
+    ax.set_title("Predicted vs actual (all horizons)")
+    ax.set_xlabel("Actual (m/s)")
+    ax.set_ylabel("Predicted (m/s)")
+    ax.legend()
+    ax.grid(True)
+    fig.tight_layout()
+    fig.savefig(output_dir / "scatter_actual_predicted.png", dpi=150)
+    plt.close(fig)
+
+    return [
+        "rolling_forecast_timeseries.png",
+        "per_horizon_metrics.png",
+        "error_histogram.png",
+        "scatter_actual_predicted.png",
+    ]
+
+
+def run(config):
+    tf = common.setup_tensorflow(config["gpu"]["enabled"])
+    print(f"TensorFlow {tf.__version__} | GPUs: {tf.config.list_physical_devices('GPU')}")
+
+    from keras import backend as K
+
+    cfg = config[STAGE]
+    tmp_dir = common.resolve(config["paths"]["tmp_dir"])
+
+    model_path = common.resolve(cfg["model_path"] or tmp_dir / "model.keras")
+    metadata_path = common.resolve(cfg["model_json_path"] or tmp_dir / "model.json")
+    if not model_path.is_file() or not metadata_path.is_file():
+        raise FileNotFoundError(
+            f"Model files not found ({model_path}, {metadata_path}). "
+            "Run the train stage first or set evaluate.model_path / model_json_path."
+        )
+
+    with open(metadata_path, encoding="utf-8") as handle:
+        metadata = json.load(handle)
+
+    wrapper_key = metadata["wrapper_key"]
+    wrapper_class = common.wrapper_factory(wrapper_key)
+    print(f"Evaluating {metadata['model_class']} ({model_path.name})")
+
+    dataset = common.load_dataset(common.resolve(config["paths"]["dataset_csv"]),
+                                  keep_raw=tuple(metadata["denoise"]))
+    train_ratio = metadata["dataset"].get("train_ratio", 0.75)
+    val_ratio = metadata["dataset"].get("val_ratio", 0.20)
+    train_df, val_df, test_df = common.split_dataset(dataset, train_ratio, val_ratio)
+    val_end = len(train_df) + len(val_df)
+    print(f"Dataset: {len(dataset)} rows | train={len(train_df)} val={len(val_df)} test={len(test_df)}")
+
+    K.clear_session()
+    wrapper = wrapper_class()
+    # Only the scalers and metadata are needed to load the saved weights and
+    # run inference; building the (large) train/val sequences would be waste.
+    wrapper.prepare(
+        train_df,
+        val_df,
+        input_steps=metadata["input_steps"],
+        output_steps=metadata["output_steps"],
+        target_col=metadata["target_col"],
+        denoise=metadata["denoise"],
+        denoise_level=metadata["denoise_level"],
+        features=metadata.get("features"),
+        decoder_mode=metadata.get("decoder_mode", "direct"),
+        create_sequences=False,
+        persistence_gate=bool(metadata.get("persistence_gate", False)),
+        normalize=bool(metadata.get("normalize", True)),
+    )
+    wrapper.gate_mode = metadata.get("gate_mode", "static")
+    wrapper.context_mode = metadata.get("context_mode", "repeat")
+    wrapper.build(common.FixedHyperParameters(metadata["hyperparameters"]))
+    wrapper.model.load_weights(model_path)
+
+    # Same origin grid as the baselines (tests/baseline_arima_rf.py): the
+    # first origin is the first test row, with the encoder consuming the last
+    # input_steps rows of the val->test boundary. Feeding test_df alone would
+    # burn input_steps test rows as warm-up and score the DL models against
+    # a shorter actuals set (divergent implicit R2 variance).
+    eval_start = max(0, val_end - wrapper.input_steps)
+    all_df = common.predict_all_horizons(wrapper, dataset.iloc[eval_start:])
+    with contextlib.redirect_stdout(io.StringIO()):
+        roll_pred, roll_actual = wrapper.rolling_forecast(dataset, test_start=val_end)
+
+    # rolling_forecast advance index i covers target rows i..i+output_steps-1,
+    # so prediction k refers to the target row val_end + k + output_steps - 1
+    # and was issued from the window ending at val_end + k - 1.
+    target_offset = val_end + wrapper.output_steps - 1
+    roll_df = pd.DataFrame(
+        {
+            "origin": dataset.index[val_end - 1 : val_end - 1 + len(roll_actual)],
+            "timestamp": dataset.index[target_offset : target_offset + len(roll_actual)],
+            "actual": roll_actual.ravel(),
+            "predicted": roll_pred.ravel(),
+        }
+    )
+
+    # Headline metrics compare predictions against the RAW wind speed; the
+    # wavelet-denoised series (what the model was trained on) is kept as a
+    # secondary reference so the smoothing effect stays measurable.
+    raw_col = metadata["target_col"].removesuffix("_wavelet")
+    has_raw = raw_col in dataset.columns
+    if has_raw:
+        all_df["actual_raw"] = dataset[raw_col].reindex(all_df["timestamp"]).to_numpy()
+        roll_df["actual_raw"] = dataset[raw_col].reindex(roll_df["timestamp"]).to_numpy()
+
+    # load_dataset regularized the series; interpolated (non-observed) grid
+    # rows must never be scored, so every headline metric below runs on the
+    # observed subset only.
+    observed = common.observed_timestamps(common.resolve(config["paths"]["dataset_csv"]))
+    if observed is not None:
+        all_df["observed"] = all_df["timestamp"].isin(observed)
+        roll_df["observed"] = roll_df["timestamp"].isin(observed)
+        print(
+            f"Excluding interpolated samples from scoring: "
+            f"{int((~all_df['observed']).sum())} all-horizon, "
+            f"{int((~roll_df['observed']).sum())} rolling"
+        )
+    all_metric = all_df if observed is None else all_df[all_df["observed"]]
+    roll_metric = roll_df if observed is None else roll_df[roll_df["observed"]]
+
+    def _metrics(predicted, actual, actual_secondary=None):
+        result = common.compute_metrics(actual, predicted)
+        if actual_secondary is not None:
+            secondary = common.compute_metrics(actual_secondary, predicted)
+            result["mae_denoised"] = secondary["mae"]
+            result["rmse_denoised"] = secondary["rmse"]
+            result["r2_denoised"] = secondary["r2"]
+        return result
+
+    metrics = {"model": metadata, "actuals": "raw ws100" if has_raw else "denoised target"}
+    metrics["all_horizons"] = _metrics(all_metric["predicted"], all_metric.get("actual_raw", all_metric["actual"]), all_metric["actual"])
+    metrics["persistence"] = _metrics(all_metric["persistence"], all_metric.get("actual_raw", all_metric["actual"]), all_metric["actual"])
+    metrics["rolling"] = _metrics(roll_metric["predicted"], roll_metric.get("actual_raw", roll_metric["actual"]), roll_metric["actual"])
+    if observed is not None:
+        metrics["synthetic_excluded"] = {
+            "all_horizons": int((~all_df["observed"]).sum()),
+            "rolling": int((~roll_df["observed"]).sum()),
+        }
+
+    # Per-horizon table follows the same headline convention (raw actuals).
+    horizon_source = all_metric.assign(actual=all_metric["actual_raw"]) if has_raw else all_metric
+    per_horizon_df = common.horizon_metrics(horizon_source)
+    metrics["by_horizon"] = per_horizon_df.to_dict(orient="records")
+
+    out_dir = common.resolve(cfg["output_dir"] or tmp_dir / "evaluate" / wrapper.name)
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    all_df.to_csv(out_dir / "predictions_all_horizons.csv", index=False)
+    roll_df.to_csv(out_dir / "predictions_rolling.csv", index=False)
+    per_horizon_df.to_csv(out_dir / "per_horizon_metrics.csv", index=False)
+    common.write_json(out_dir / "metrics.json", metrics)
+
+    plots = _plot_evaluation(roll_df, all_df, per_horizon_df, out_dir)
+
+    print(
+        f"[{wrapper_key}] rolling MAE={metrics['rolling']['mae']:.4f} "
+        f"RMSE={metrics['rolling']['rmse']:.4f}"
+    )
+    print(
+        f"[{wrapper_key}] all-horizon MAE={metrics['all_horizons']['mae']:.4f} "
+        f"RMSE={metrics['all_horizons']['rmse']:.4f}"
+    )
+    print(f"Results saved to {out_dir}")
+
+    return {
+        "artifacts": {
+            "predictions_all_horizons_csv": str(out_dir / "predictions_all_horizons.csv"),
+            "predictions_rolling_csv": str(out_dir / "predictions_rolling.csv"),
+            "per_horizon_metrics_csv": str(out_dir / "per_horizon_metrics.csv"),
+            "metrics_json": str(out_dir / "metrics.json"),
+            "plots": [str(out_dir / p) for p in plots],
+        },
+        "metrics": {
+            "rolling": metrics["rolling"],
+            "all_horizons": metrics["all_horizons"],
+            "persistence": metrics["persistence"],
+        },
+    }
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Evaluation stage.")
+    parser.add_argument("--config", type=Path, default=None,
+                        help="Path to a pipeline config file.")
+    args = parser.parse_args()
+
+    common.ensure_project_root_on_path()
+    config = config_module.load_config(args.config)
+    run(config)
+
+
+if __name__ == "__main__":
+    main()

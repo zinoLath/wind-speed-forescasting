@@ -62,7 +62,7 @@ venv.bak/
 # Models and large data files
 *.h5
 *.h5.keras
-*.csv
+/data/**/*.csv
 *.xlsx
 
 # Spyder project settings
@@ -77,6 +77,17 @@ venv.bak/
 
 # mkdocs documentation
 /site
+# Artigos: clones Overleaf (git próprio), PDFs e catálogo gerado
+/articles/
+# Site gerado dos relatórios + artefatos por relatório
+/reports/_site/
+/reports/state.json
+/reports/**/figures/
+/reports/**/retrain.log
+/reports/**/regenerate.log
+/reports/**/job.json
+/paper/overleaf_remote.txt
+/paper/.overleaf-clone/
 
 # mypy
 .mypy_cache/
@@ -92,6 +103,8 @@ dmypy.json
 # PyTorch specific
 *.pt
 *.pth
+*.ckpt
+/checkpoints/
 
 # Data folders (uncomment if needed)
 /data/
@@ -99,4 +112,10 @@ dmypy.json
 /models/
 /OLD/
 /images/
-/scripts/
+# Pipeline temporary outputs (overwritten on every run)
+/pipeline/tmp/
+/pipeline/tmp_*/
+# Modelos Keras compilados
+*.keras
+# Binário local do CUDA (symlink para .venv/bin/ptxas)
+ptxas
