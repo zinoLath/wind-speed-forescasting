@@ -1,7 +1,7 @@
 ---
 title: Armadilhas de execução (gotchas)
 area: processo
-updated: 2026-10-19
+updated: 2026-10-21
 ---
 
 # Armadilhas de execução (gotchas)
@@ -29,6 +29,18 @@ Consolidado de `agents/gotchas.md` — os pontos que já quebraram algo antes:
   `OLD/tests/`, wrappers em `OLD/models/`, notebooks legados.
 - **Métricas históricas** (MAE 0.1589): protocolo antigo com vazamento —
   números honestos em `reports/` e `docs/`.
+
+## Patch de coeficientes ITILDE-Q: binding de import
+
+Os wrappers fazem `from .losses import itilde_q` **no import** — patchar
+`losses.itilde_q` DEPOIS não afeta o wrapper (binding antigo). Para variar
+α/β/γ é preciso patchar o **módulo do wrapper**
+(`src.models.s2s_lstm_wrapper.itilde_q = ...`, como faz
+`scripts/itildeq_terms_search_train.py:patch_lstm_itildeq`) ou patchar
+ANTES do primeiro import do wrapper. **Impacto nos resultados até
+21/10/2026: nenhum** — os args (0,3/0,5/0,1) eram iguais aos defaults da
+perda, então o binding "errado" produzia os mesmos valores. Busca de
+coeficientes em `scripts/itildeq_terms_kaggle.py` (Kaggle).
 
 ## Fontes
 

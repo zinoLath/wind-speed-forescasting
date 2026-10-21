@@ -76,3 +76,27 @@ python scripts/articles_sync.py push-all --auto   # best-effort (hook)
 - `steam/` ainda não tem `.git`: quando souber o project-id do Overleaf,
   rode `init steam <url>` e depois `git fetch origin && git reset
   origin/master` dentro de `articles/steam/` para casar com o Overleaf.
+
+## Tabelas e figuras do artigo SBSR (fontes por tipo)
+
+- **Rodada canônica**: `report_8020_itildeq` (mista — finding
+  `resultados-canonicos`). Qualquer tabela/figura citada no artigo tem
+  que vir dela.
+- **Tabelas de métricas** (agregado + h=36): `scripts/sbsr_tables.py
+  --round-dir data/results/report_8020_itildeq` → tabelas LaTeX prontas
+  (caption+label); finding `tabelas-sbsr-geradas`.
+- **Tabelas de hiperparâmetros/tempo de treino** (pedida pela revisão):
+  `data/results/report_8020_itildeq/evaluation.json` (params/loss/
+  timing), `data/results/optuna/<modelo>/trials.csv`,
+  `data/results/*/summary.json` (`training_time_sec`).
+- **Tabela descritiva do dataset**: colunas de `data/dataset.csv`
+  (coletados `ws/dir/v`, `press/humid/temp`; computados `cis*`,
+  `disp*`).
+- **Figuras**: `articles/sbr/sync.json` (heatmaps/split ← relatório da
+  rodada canônica); regeneração das imagens em
+  `tests/relatorio_resultados.py`.
+- **Teste DM/p-valores**: regeneração da canônica gera `mcs.json`;
+  análise ajustada em `reports/lidar/8020-itildeq-metodos/`.
+- Integração de tudo no texto: skill **sbsr-integrate** (verifica
+  consistência: var implícita uniforme, figura = tabela da mesma
+  rodada).

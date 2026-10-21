@@ -1,7 +1,7 @@
 ---
 title: HPO com Optuna e rodadas distribuídas
 area: metodos
-updated: 2026-10-19
+updated: 2026-10-21
 ---
 
 # HPO com Optuna e rodadas distribuídas
@@ -33,6 +33,14 @@ Um estudo por modelo; protocolo metodológico:
 - `scripts/colab_round2.py` planeja/empacota (pesados → notebooks Colab e
   kernels Kaggle; leves → watchdog local `scripts/optuna_watchdog.sh`);
   notebooks em `notebooks/colab_round2/` — **nunca editar à mão, regenerar**.
+- **Round 5 (COLETADA E PROMOVIDA em 21/10/2026)**: 2 kernels Kaggle,
+  404 trials (LSTM 104), split 72/8/20, objetivo = skill bloco k=4 na
+  validação (571 origens), combinação canônica (LSTM→ITILDE-Q,
+  TCN→MSE) + dilatações C′. Best skill (val): LSTM-Bi **+0,378** >
+  LSTM +0,348 > TCN +0,320 > TCN-Bi +0,312. Promovida para
+  `pipeline/tmp/optuna/` (backups: `optuna_backup_*`,
+  `Seq2Seq_TCN.bak_r4`); relatório `reports/resultados/optuna-round5/`.
+  Coletor automático: `scripts/watch_round5_collect.sh`.
 - Heartbeats/snapshots no Drive (`MyDrive/wind-speed-colab/round2/`);
   Kaggle via `scripts/kaggle_round2_worker.py` + `kaggle_runner.py`
   (snapshot a cada 10 min); `scripts/colab_monitor.py` consolida

@@ -1,7 +1,7 @@
 ---
 title: Sync Overleaf (paper + artigos) e hook post-commit
 area: artigos
-updated: 2026-10-19
+updated: 2026-10-20
 ---
 
 # Sync Overleaf e hook post-commit
@@ -24,6 +24,12 @@ scripts/hooks`):
    repos dos artigos (nunca .tex do autor).
 
 Credenciais: `OVERLEAF_USER`/`OVERLEAF_TOKEN` (ver `paper/README.md`).
+**Credencial persistente**: git credential helper configurado no clone
+`articles/sbr` — `credential.helper = store --file=
+~/.config/git/overleaf-credentials` (1 entrada overleaf) — `git push`
+funciona sem env vars; o remote do clone é limpo (sem credencial
+embutida, limpo em 20/10/2026; inject no push vem do helper ou do env).
+O `.gitignore` do clone ignora `sync.json`, `*.pdf` e auxiliares LaTeX.
 
 Fluxo típico pós-experimento:
 

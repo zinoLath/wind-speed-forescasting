@@ -21,6 +21,7 @@
 ### protocolo
 
 - [protocolo-avaliacao](knowledge/protocolo-avaliacao.md) — protocolos: pipeline 75/20/5 com validação vs LiDAR 80/20 sem validação (60 épocas, seed 42); métricas vs ws100 bruto; rolling sem vazamento.
+- [variancia-implicita](knowledge/variancia-implicita.md) — diagnóstico de consistência Var(y) = MSE/(1−R²): mesma tabela ⇒ variância implícita única; provou origens diferentes (2,702 × 2,779) na Tabela 1 do SBSR; critério de pronto da sbsr-integrate.
 - [wavelet-denoise](knowledge/wavelet-denoise.md) — alvo `ws100_wavelet` = sym18 nível 2, VisuShrink soft-threshold; escolha validada por A/B (`docs/ab_target_denoise.md`).
 
 ### resultados

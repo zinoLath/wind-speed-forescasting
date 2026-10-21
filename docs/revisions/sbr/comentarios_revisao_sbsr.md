@@ -1,5 +1,7 @@
 # Revisão SBSR — comentários do Overleaf (rodada 13–14/10/2026)
 
+> **Regra de uso (20/10/2026):** todo texto marcado como "pronto", "rascunho", "sugestão" ou "esqueleto" neste documento é **roteiro de conteúdo** — um guia do que o parágrafo precisa declarar. **A redação final é do autor**, com as próprias palavras (prosa de artigo não é copiada de IA; normatica SBSR e ética pesquisadora). IA = análise, verificação e números.
+
 Análise comentário a comentário da rodada de revisão do artigo SBSR
 ("Comparação de Modelos de Aprendizado Profundo com Estrutura Seq2Seq
 para a Predição da Velocidade do Vento com Dados LiDAR").
@@ -49,7 +51,7 @@ arquivos `.tex`. Toda localização inferida está marcada com
 | **[CORRIGIDO]** | já aplicado nos `.tex` desta máquina (não commitado/pushado) |
 | **[RESPOSTA]** | pergunta dos revisores — respondida aqui com fato verificado |
 | **[LACUNA]** | informação não disponível localmente — não inventada; onde buscar |
-| **[DECISÃO DO AUTOR]** | escolha subjetiva/estilística — aplicar você mesmo (texto pronto quando possível) |
+| **[DECISÃO DO AUTOR]** | escolha subjetiva/estilística — decidir você (roteiros de conteúdo abaixo — redação sua) |
 | **[AÇÃO]** | trabalho a fazer no artigo/código |
 | **[GUIA]** | material de estudo + passos + ferramentas |
 | **[CRÍTICO]** | risco de rejeição/observação forte de revisor externo |
@@ -87,7 +89,7 @@ arquivos `.tex`. Toda localização inferida está marcada com
 - [ ] **[DECISÃO DO AUTOR]** Reescrever frases sobre "área de estudo"
       (Conclusões par. 2) e validação cruzada (par. 3) — textos prontos
       abaixo.
-- [ ] **[DECISÃO DO AUTOR]** Verbos pessoais na Introdução (texto pronto).
+- [ ] **[DECISÃO DO AUTOR]** Verbos pessoais na Introdução (roteiro abaixo).
 - [ ] **[DECISÃO DO AUTOR]** Terminologia "rede" → "arquitetura" onde couber.
 - [ ] **[GUIA]** Diebold–Mariano + bootstrap em blocos (conceitos e uso).
 - [ ] Remover blocos `% COMENTÁRIOS DE REVISÃO` antes de submeter.
@@ -109,7 +111,7 @@ arquivos `.tex`. Toda localização inferida está marcada com
 - **Análise:** o thread foi resolvido, mas **o texto continua com verbos
   pessoais** — provavelmente ficou acordado corrigir e a correção não
   foi feita (ou foi feita só no Overleaf; conferir).
-- **Ação [DECISÃO DO AUTOR]** — sugestão pronta:
+- **Ação [DECISÃO DO AUTOR]** — roteiro de conteúdo (redigir com suas palavras):
   > "Atualmente, a previsão da velocidade do vento em médio e longo
   > prazo é realizada por métodos físicos, que simulam a área local a
   > partir de parâmetros meteorológicos e geográficos coletados
@@ -290,7 +292,7 @@ arquivos `.tex`. Toda localização inferida está marcada com
     Random Forest; **statsmodels 0.15.0** — ARIMA;
   - **Optuna 4.9.0** (busca de hiperparâmetros), **keras-tcn 3.5.6**
     (blocos TCN), pandas 2.3.3 / numpy 1.26.4 / matplotlib 3.10.8.
-- **Ação** — parágrafo pronto para colar (ajuste se alguma versão
+- **Ação** — roteiro de conteúdo (redigir com suas palavras; ajuste se alguma versão
   mudar na rodada final):
   > "Os experimentos foram implementados em Python 3.10, utilizando
   > TensorFlow 2.21 (Keras 3) para as arquiteturas seq2seq, com o
@@ -534,7 +536,7 @@ arquivos `.tex`. Toda localização inferida está marcada com
   foram). O que se quer dizer é: como só há um sítio/período, a
   generalização para outros contextos é hipótese para trabalho futuro,
   não resultado observado.
-- **Ação [DECISÃO DO AUTOR]** — reescrita pronta:
+- **Ação [DECISÃO DO AUTOR]** — roteiro de reescrita (redigir com suas palavras):
   > "Contudo, este resultado não elimina as variantes LSTM: como os
   > dados são oriundos de um único sítio e período, a superioridade
   > observada não garante generalização para outras áreas e campanhas
@@ -556,7 +558,7 @@ arquivos `.tex`. Toda localização inferida está marcada com
   própria para dados dependentes no tempo" — que aliás já é o
   procedimento de treino/teste 80/20 adotado (uma única dobra temporal);
   o que falta é repeti-la em múltiplas dobras.
-- **Ação [DECISÃO DO AUTOR]** — reescrita pronta:
+- **Ação [DECISÃO DO AUTOR]** — roteiro de reescrita (redigir com suas palavras):
   > "A principal limitação do trabalho executado foi o conjunto de
   > dados, limitado em tempo. Embora o conjunto se demonstrasse capaz
   > de treinar os modelos, a avaliação restringiu-se a uma única

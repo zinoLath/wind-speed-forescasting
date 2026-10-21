@@ -1,27 +1,42 @@
 ---
 title: Resultados canônicos das rodadas
 area: resultados
-updated: 2026-10-19
+updated: 2026-10-20
 ---
 
 # Resultados canônicos das rodadas
 
-Números de referência (R² agregado `all`, MSE em (m/s)²) — sempre checar o
+Números de referência (R² agregado `all`) — sempre checar o
 `evaluation.json` da rodada antes de citar qualquer número.
 
-## report_8020 (rodada canônica atual, loss ponderada)
+## RODADA CANÔNICA ESCOLHIDA (20/10/2026): `report_8020_itildeq` (mista)
 
-`data/results/report_8020/evaluation.json` — 4 modelos, rolling com 1477
-amostras:
+TCN/TCN-Bi com HPs canônicos + dilatações estáticas C′ + perda **MSE**;
+LSTM/LSTM-Bi com HPs do HPO 80/20 + perda **ITILDE-Q**. **Treino executado em 21/10 com HPs da round5 e REVERTIDO**: a transferência falhou nos TCNs (0,52→0,29; campos estruturais fora do espaço da busca — `context_pooling`/`dilation_rate` — caíram p/ defaults + split de HPO 72/8/20 ≠ 80/20). Canônica em produção = execução 16/10 restaurada (backup `trained_8020_itildeq_backup_202610211004`; a rodada com HPs round5 NÃO substitui a canônica: virou rodada própria de referência `report_8020_round5` (modelos `trained_8020_round5`, relatório `reports/lidar/8020-round5/`, status não-canônico)). Registro original: treino pendente — retreino via `scripts/lidar_8020_itildeq_train.py`
+(fluxo completo no playbook `retreino-lidar.md` / skill `lidar-retrain`;
+regeneração SEM `--no-baselines` ⇒ DL e baselines na mesma grade de
+origens, var implícita única). Números da execução anterior (16/10):
 
-| Modelo | R² (all) | MSE (all) | R² (rolling) |
-|---|---|---|---|
-| TCN | **0.514** | 1.314 | 0.403 |
-| TCN-Bi | 0.403 | 1.615 | 0.320 |
-| LSTM | 0.279 | 1.948 | 0.146 |
-| LSTM-Bi | 0.225 | 2.094 | 0.135 |
+| Modelo | R² (all) | Loss |
+|---|---|---|
+| TCN | **0.519** | mse |
+| TCN-Bi | 0.490 | mse |
+| LSTM | 0.318 | itilde_q |
+| LSTM-Bi | 0.329 | itilde_q |
 
-- `mcs.json` complementa com testes estatísticos (model confidence set).
+- Complementos da rodada: `reports/lidar/8020-itildeq-metodos/` (DM
+  ajustado HLN+HAC+Holm+Clark–West) e `reports/lidar/8020-itildeq-seeds/`.
+- Tabelas do artigo: `scripts/sbsr_tables.py --round-dir
+  data/results/report_8020_itildeq`.
+- Figuras do artigo: `articles/sbr/sync.json` já aponta para
+  `data/results/report_8020_itildeq/images/`.
+
+## report_8020 (rodada ponderada — ANTERIOR, mantida como ablação)
+
+`data/results/report_8020/evaluation.json` — 4 modelos com
+`horizon_weighted_mse`, rolling com 1477 amostras: TCN **0.514** (MSE
+1.314) / TCN-Bi 0.403 / LSTM 0.279 / LSTM-Bi 0.225 (R² rolling: 0.403
+TCN). `mcs.json` com testes estatísticos.
 
 ## report_homologado (rodada antiga, figura do paper/steam)
 

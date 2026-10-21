@@ -1,7 +1,7 @@
 ---
 title: Mapa de dados e artefatos
 area: dados
-updated: 2026-10-19
+updated: 2026-10-20
 ---
 
 # Mapa de dados e artefatos
@@ -11,7 +11,17 @@ Onde vivem entradas, saídas e artefatos — e o que é gitignored.
 ## Entradas (gitignored)
 
 - `data/dataset.csv` — série de previsão (treino/avaliação, 10 min).
-- `data/wind_data.csv` — série longa com lacunas (imputação/walk-forward).
+  **Verificado (20/10/2026): 7.561 linhas, 16/09 18:00 → 08/11/2021 — a
+  série NÃO é completa** (grade do período daria ~7.776; 7.632 = 53 dias
+  cheios): há linhas inteiras ausentes (sem NaN) e timestamps fora da
+  grade (ex.: minutos :29). Confirmar se é pós-imputação ou bruto antes
+  de afirmar "série sem valores ausentes" (thread Overleaf `6ace7f52` —
+  o 03 atual afirma o contrário).
+- `data/wind_data.csv` — série longa com lacunas (imputação/walk-forward;
+  cobre período diferente, 2021-11 → 2022-10).
+- `data/siga-empreendimentos-geracao-diario.csv` — SIGA/ANEEL base
+  diária (snapshot 20-10-2026; fonte do dado de capacidade da
+  Introdução do SBSR).
 
 ## Saídas e artefatos
 

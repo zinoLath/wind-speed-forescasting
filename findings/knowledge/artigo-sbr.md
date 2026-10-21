@@ -55,10 +55,18 @@ TCN-Bi.
   como blocos `% COMENTÁRIOS DE REVISÃO` em `02/03/04/06` (marcadores
   `[V-…]/[F-…]` + ID do thread; remover antes de submeter).
 - **Consolidação da sessão**: relatório favoritado
-  `reports/protocolo/sessao-comentarios-sbsr-1/` (3 seções: aberto /
-  decisão humana / resolvido + roteiro de estudo DM/Theil U/Friedman);
-  varredura de testes estatísticos da coleção em
-  `docs/revisions/sbr/kbscout/result-5.md`.
+  `reports/protocolo/sessao-comentarios-sbsr-1/` (kanban 4 colunas + 3
+  seções + roteiro de estudo DM/Theil U/Friedman); varredura de testes
+  estatísticos da coleção em `docs/revisions/sbr/kbscout/result-5.md`.
+- **Push Overleaf 20/10/2026 (`75d2ba0`, branch `main`)** — rebased sobre
+  o "Update on Overleaf" (`a6ea1cf`) deles, que JÁ endereçava: verbos
+  pessoais (Intro impessoal), números 0,08/0,04, "família TCN mostrou",
+  contexto do negócio (down-ramps/Vento Sul), legenda "Fonte:
+  \cite{EOSOLAR}" e placeholder `%Teste estatístico` no `04` (onde entra
+  o DM). **Chaves do bib**: `arcilanVentoSul` = artigo novo (Sea
+  breeze/down-ramps, Energy 294, 2024); `EOSOLAR` = projeto (2022);
+  `aneelSiga` = SIGA/ANEEL (nosso). Comment blocks [V-/F-] pushados —
+  remover antes de submeter.
 
 ## Fontes
 
