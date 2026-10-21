@@ -48,6 +48,18 @@ Um estudo por modelo; protocolo metodológico:
   do MemTotal; Colab/Kaggle 82%).
 - Runbook completo: skill **optuna-colab**.
 
+## Composição do espaço: merge, nunca substituição
+
+O espaço de busca da round 5 **não é superset** dos HPs canônicos: campos
+estruturais (`context_pooling`, `encoder/decoder_dilation_rate`,
+`batch_size`) não estão no espaço — e no retreino 80/20 eles **caíram
+para os defaults do wrapper** em vez de herdar os canônicos, junto com um
+split de HPO diferente (72/8/20 × 80/20). Resultado: TCN 0,52 → 0,29
+(round canônica restaurada; rodada round5 mantida como referência em
+`report_8020_round5`). **Regra**: ao treinar com HPs de uma rodada,
+mesclar `base canônica + override apenas dos campos buscados` (ou
+garantir que o espaço inclua todos os campos estruturais).
+
 ## Fontes
 
 - `docs/metodologia.md` (seção 4); `agents/optuna-colab.md`;

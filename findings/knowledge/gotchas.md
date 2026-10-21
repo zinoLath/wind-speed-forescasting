@@ -30,6 +30,19 @@ Consolidado de `agents/gotchas.md` — os pontos que já quebraram algo antes:
 - **Métricas históricas** (MAE 0.1589): protocolo antigo com vazamento —
   números honestos em `reports/` e `docs/`.
 
+## Kaggle: corrida de versionamento do dataset
+
+Kernels restauram a **última versão processada** do Dataset no momento em
+que rodam. `datasets version` retorna antes do processamento assíncrono
+terminar — pushar o kernel na sequência pode restaurar a versão ANTERIOR
+(caso real: `can't open file .../itildeq_terms_search_train.py`, duas
+vezes, em 21/10/2026). **Fluxo correto**: versionar → esperar o
+processamento → pushar kernels. Conferir pelo `creationDate` de um
+arquivo qualquer da listagem (`kaggle datasets files <id>`); com
+`--dir-mode zip` a listagem mostra os arquivos **extraídos** do zip (não
+o nome do zip) e é **paginada** — grep de caminho pode falhar por
+paginação (use a data de criação, em **UTC**).
+
 ## Patch de coeficientes ITILDE-Q: binding de import
 
 Os wrappers fazem `from .losses import itilde_q` **no import** — patchar
