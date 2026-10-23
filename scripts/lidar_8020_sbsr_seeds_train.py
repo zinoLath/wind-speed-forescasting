@@ -32,22 +32,34 @@ from src import common
 DEFAULT_SEEDS = (43, 44, 45, 46)
 DEFAULT_OUTPUT = "pipeline/tmp/trained_8020_sbsr_seeds"
 CANON_DIR = common.resolve("pipeline/tmp/trained_8020_itildeq")
-KEEP_FEATUREX = ("humid", "temp") + tuple(f"cis{i}" for i in range(1, 20))
+KEEP_METEO = ("humid", "temp")
+KEEP_FEATUREX = KEEP_METEO + tuple(f"cis{i}" for i in range(1, 20))
+KEEP_BY_WRAPPER = {
+    "lstm": KEEP_FEATUREX,
+    "lstm_bi": KEEP_FEATUREX,
+    "tcn": KEEP_METEO,
+    "tcn_bi": KEEP_METEO,
+}
 WRAPPER_MODULES = {
     "lstm": "src.models.s2s_lstm_wrapper",
     "lstm_bi": "src.models.s2s_lstm_bi_wrapper",
+    "tcn": "src.models.s2s_tcn_wrapper",
+    "tcn_bi": "src.models.s2s_tcn_bi_wrapper",
 }
 
 
-def load_hp(wrapper_key, hp_json):
+def load_meta(wrapper_key, hp_json):
     if hp_json:
         path = Path(hp_json)
         if path.is_dir():
             path = path / wrapper_key / "model.json"
-        meta = json.load(open(path, encoding="utf-8"))
-        return dict(meta.get("hyperparameters", meta))
-    path = CANON_DIR / wrapper_key / "model.json"
-    meta = json.load(open(path, encoding="utf-8"))
+        return json.load(open(path, encoding="utf-8"))
+    return json.load(open(CANON_DIR / wrapper_key / "model.json",
+                          encoding="utf-8"))
+
+
+def load_hp(wrapper_key, hp_json):
+    meta = load_meta(wrapper_key, hp_json)
     return dict(meta["hyperparameters"])
 
 
@@ -79,12 +91,16 @@ def train_one(tf, wrapper_key, seed, dataset, train_df, test_df, val_end,
               observed, args, env):
     from keras import backend as K
 
-    hp = load_hp(wrapper_key, args.hp_json)
+    meta = load_meta(wrapper_key, args.hp_json)
+    hp = dict(meta["hyperparameters"])
+    static = meta.get("static_dilations")
     batch_size = int(hp.get("batch_size", 32))
 
     K.clear_session()
     tf.keras.utils.set_random_seed(seed)
     wrapper = common.wrapper_factory(wrapper_key)()
+    if static:
+        wrapper.static_dilations = static
     wrapper.prepare(
         train_df, train_df.tail(400),
         input_steps=72, output_steps=36, target_col="ws100_wavelet",
@@ -152,11 +168,14 @@ def train_one(tf, wrapper_key, seed, dataset, train_df, test_df, val_end,
         "name": wrapper.name,
         "seed": seed,
         "loss": "mse",
+        "static_dilations": static if static else None,
         "hyperparameters": hp,
         "params_source": "canônica 16/10 (trained_8020_itildeq) com perda "
                          "MSE pura — rodada final SBSR (variância de seed)",
-        "feature_keep": list(KEEP_FEATUREX),
-        "feature_set": ("perfil 46 + cis1..19 + humid/temp (67 col; "
+        "feature_keep": list(KEEP_BY_WRAPPER[wrapper_key]),
+        "feature_set": ("perfil 46 + humid/temp (48 col)" if wrapper_key in
+                        ("tcn", "tcn_bi") else
+                        "perfil 46 + cis1..19 + humid/temp (67 col; "
                         "sem press/disp/vdisp)"),
         "params": int(wrapper.model.count_params()),
         "persistence_gate": False,
@@ -210,7 +229,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--epochs", type=int, default=60)
     parser.add_argument("--wrappers", nargs="+", default=["lstm_bi"],
-                        choices=list(WRAPPER_MODULES))
+                        choices=list(WRAPPER_MODULES))  # default: TCN (uni)
     parser.add_argument("--seeds", nargs="+", type=int,
                         default=list(DEFAULT_SEEDS))
     parser.add_argument("--output-dir", default=DEFAULT_OUTPUT)
@@ -226,16 +245,20 @@ def main():
     print(f"TensorFlow {tf.__version__} | GPU: {env['gpu']} | "
           f"host: {env['hostname']}", flush=True)
 
-    dataset = common.load_dataset(common.resolve("data/dataset.csv"),
-                                  keep_raw=KEEP_FEATUREX)
-    train_df, _val_df, test_df = common.split_dataset(dataset, 0.80, 0.0)
-    val_end = len(train_df)
+    datasets = {keep: common.load_dataset(
+                    common.resolve("data/dataset.csv"), keep_raw=keep)
+                for keep in dict.fromkeys(KEEP_BY_WRAPPER.values())}
     observed = common.observed_timestamps(common.resolve("data/dataset.csv"))
-    print(f"Dataset {len(dataset)} linhas x {dataset.shape[1]} colunas | "
-          f"treino {len(train_df)} | teste {len(test_df)} | "
-          f"seeds {args.seeds}", flush=True)
+    for k, ds in datasets.items():
+        print(f"dataset keep={len(k)} extras: {len(ds)} linhas x "
+              f"{ds.shape[1]} colunas", flush=True)
+    print(f"seeds {args.seeds}", flush=True)
 
     for wrapper_key in args.wrappers:
+        keep = KEEP_BY_WRAPPER[wrapper_key]
+        dataset = datasets[keep]
+        train_df, _val_df, test_df = common.split_dataset(dataset, 0.80, 0.0)
+        val_end = len(train_df)
         summary = {}
         summary_path = OUTPUT_DIR / wrapper_key / "summary.json"
         for seed in args.seeds:
