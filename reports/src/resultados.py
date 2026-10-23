@@ -446,17 +446,28 @@ def build_report(ctx, *, source_dir: str, title: str, subtitle: str = "",
     for m in models:
         a = m["all"]
         rows.append((m.get("short", m.get("name", "?")),
-                     m.get("loss") or "—",
                      _fmt(a.get("mse")), _fmt(a.get("rmse")),
                      _fmt(a.get("mae")), _fmt(a.get("r2"))))
-    best_mse = min(float(r[2].replace(",", ".")) for r in rows)
+    base_metrics = {}
+    base_path = src / "baselines.json"
+    if base_path.is_file():
+        base_metrics = json.loads(base_path.read_text(encoding="utf-8"))
+    for key, label in (("arima", "ARIMA (baseline)"),
+                       ("rf", "Random Forest (baseline)"),
+                       ("persistence", "Persistência (baseline)")):
+        blk = base_metrics.get(key, {}).get("all_horizons")
+        if blk:
+            rows.append((label, _fmt(blk.get("mse")), _fmt(blk.get("rmse")),
+                         _fmt(blk.get("mae")), _fmt(blk.get("r2"))))
+    best_mse = min(float(r[1].replace(",", ".")) for r in rows)
     highlight = [i for i, r in enumerate(rows)
-                 if float(r[2].replace(",", ".")) == best_mse]
+                 if float(r[1].replace(",", ".")) == best_mse]
     parts.append(C.section(
         "Métricas — todos os horizontes (1–36 passos, vs ws100 bruto)",
-        C.table(["Modelo", "Loss", "MSE (m/s)²", "RMSE (m/s)", "MAE (m/s)",
+        C.table(["Modelo", "MSE (m/s)²", "RMSE (m/s)", "MAE (m/s)",
                  "R²"], rows,
-                "Métricas de erro dos modelos seq2seq em todos os horizontes.",
+                "Métricas de erro dos modelos seq2seq e dos baselines "
+                "estatísticos na mesma grade de origens.",
                 formats=FORMATS, label="tab:metricas_geral",
                 highlight_rows=highlight,
                 note="menor MSE destacado; avaliação sobre as janelas do "
@@ -467,7 +478,9 @@ def build_report(ctx, *, source_dir: str, title: str, subtitle: str = "",
             "MAE é a leitura em escala natural; R² mede a variância "
             "explicada — perto de 0,4–0,5 neste sítio é bom desempenho "
             "multi-passo, pois o vento a 6 h tem pouca previsibilidade "
-            "determinística.",
+            "determinística. Os três últimos métodos são baselines "
+            "estatísticos avaliados na mesma grade de origens dos modelos "
+            "de deep learning.",
         sec_id="metricas"))
 
     # ---- hiperparâmetros (requer hp gravado — run do banco)

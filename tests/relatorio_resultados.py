@@ -2941,6 +2941,8 @@ def main():
         if baselines:
             baselines = recompute_baseline_metrics(base_preds,
                                                    baselines["metrics"])
+    if baselines:
+        common.write_json(OUT_DIR / "baselines.json", baselines["metrics"])
 
     plot_split_timeline(dataset, recs)
     plot_comparison_bars(recs, baselines)
