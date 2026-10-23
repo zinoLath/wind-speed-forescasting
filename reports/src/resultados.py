@@ -217,6 +217,52 @@ def _summary_text(models: list) -> str:
     )
 
 
+def _hp_section(models: list) -> str:
+    """Tabela de hiperparâmetros por modelo (requer run do banco)."""
+    entries = []
+    for m in models:
+        hp = m.get("hp") or {}
+        feats = m.get("features") or []
+        entries.append((m.get("short", m.get("name", "?")), hp, len(feats),
+                        m.get("seed"), m.get("loss")))
+    if not any(e[1] for e in entries):
+        return ""
+
+    def cell(v):
+        if v is None:
+            return "—"
+        if isinstance(v, float):
+            return f"{v:.6g}".replace(".", ",")
+        if isinstance(v, (list, tuple)):
+            return "[" + ", ".join(cell(x) for x in v) + "]"
+        return str(v)
+
+    keys = []
+    for _, hp, *_ in entries:
+        for k in hp:
+            if k not in keys:
+                keys.append(k)
+    rows = [("seed", *(cell(e[3]) for e in entries)),
+            ("colunas de entrada",
+             *(str(e[2]) if e[2] else "—" for e in entries)),
+            ("loss", *(cell(e[4]) for e in entries))]
+    rows += [(k, *(cell(e[1].get(k)) for e in entries)) for k in keys]
+    return C.section(
+        "Hiperparâmetros",
+        C.table(["Parâmetro", *(e[0] for e in entries)], rows,
+                "Hiperparâmetros de treino de cada modelo da rodada "
+                "(seed, colunas de entrada e o dicionário gravado no "
+                "model.json / banco de runs).",
+                label="tab:hiperparametros"),
+        sub="TCNs herdam os HPs da canônica 16/10 (dilatações estáticas C′ "
+            "com <code>encoder_dil_depth</code>/<code>decoder_dil_depth</code> "
+            "e kernel/stacks fixos); LSTMs usam os HPs do HPO 80/20. A perda "
+            "é MSE pura em todos os wrappers. <code>colunas de entrada</code> "
+            "reflete o <code>feature_keep</code> por wrapper do lineup misto "
+            "(48/48/67/67 colunas).",
+        sec_id="hiperparametros")
+
+
 def _mcs_section(src: Path) -> str:
     """Seção do Model Confidence Set (quando mcs.json existe na fonte)."""
     path = src / "mcs.json"
@@ -389,6 +435,11 @@ def build_report(ctx, *, source_dir: str, title: str, subtitle: str = "",
             "multi-passo, pois o vento a 6 h tem pouca previsibilidade "
             "determinística.",
         sec_id="metricas"))
+
+    # ---- hiperparâmetros (requer hp gravado — run do banco)
+    hp_html = _hp_section(models)
+    if hp_html:
+        parts.append(hp_html)
 
     # ---- tabela: rolling
     if all("rolling" in m for m in models):
