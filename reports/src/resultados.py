@@ -23,6 +23,10 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from reports.src import components as C  # noqa: E402
 
+# Popups LaTeX das páginas de resultados abrem em SBSR por default (o
+# formato steam usa \rowcolor/colortbl, que o template do SBSR não carrega).
+FORMATS = ("sbsr", "steam", "generic")
+
 FIGURE_CAPTIONS = {
     "01_split_temporal": "Divisão temporal do dataset LiDAR (treino/validação/teste)",
     "02_comparacao_mse_rmse": "Comparação de MSE e RMSE (todos os horizontes) — modelos e baselines",
@@ -252,7 +256,7 @@ def _hp_section(models: list) -> str:
         C.table(["Parâmetro", *(e[0] for e in entries)], rows,
                 "Hiperparâmetros de treino de cada modelo da rodada "
                 "(seed, colunas de entrada e o dicionário gravado no "
-                "model.json / banco de runs).",
+                "model.json / banco de runs).", formats=FORMATS,
                 label="tab:hiperparametros"),
         sub="TCNs herdam os HPs da canônica 16/10 (dilatações estáticas C′ "
             "com <code>encoder_dil_depth</code>/<code>decoder_dil_depth</code> "
@@ -293,7 +297,7 @@ def _mcs_section(src: Path) -> str:
                 rows, "Model Confidence Set (Hansen, Lunde & Nason, 2011): "
                 "modelos no conjunto são estatisticamente indistinguíveis "
                 "quando a comparação agrega toda a trajetória de 36 passos.",
-                label="tab:mcs",
+                formats=FORMATS, label="tab:mcs",
                 highlight_rows=[i for i, r in enumerate(rows)
                                 if "pertence" in r[3]],
                 note=note),
@@ -424,7 +428,8 @@ def build_report(ctx, *, source_dir: str, title: str, subtitle: str = "",
         C.table(["Modelo", "Loss", "MSE (m/s)²", "RMSE (m/s)", "MAE (m/s)",
                  "R²"], rows,
                 "Métricas de erro dos modelos seq2seq em todos os horizontes.",
-                label="tab:metricas_geral", highlight_rows=highlight,
+                formats=FORMATS, label="tab:metricas_geral",
+                highlight_rows=highlight,
                 note="menor MSE destacado; avaliação sobre as janelas do "
                      "conjunto de teste."),
         sub="Cada previsão é avaliada no timestamp que ela almeja: o passo "
@@ -454,7 +459,8 @@ def build_report(ctx, *, source_dir: str, title: str, subtitle: str = "",
             "Rolling forecast autônomo (h = 36 passos ≈ 6 h)",
             C.table(["Modelo", "MSE (m/s)²", "RMSE (m/s)", "MAE (m/s)", "R²"],
                     rows, "Métricas do rolling forecast autônomo (horizonte "
-                    "de 36 passos).", label="tab:metricas_rolling",
+                    "de 36 passos).", formats=FORMATS,
+                    label="tab:metricas_rolling",
                     highlight_rows=highlight,
                     note="o modelo vê apenas o histórico; nenhuma entrada "
                          "futura real."),
@@ -482,7 +488,7 @@ def build_report(ctx, *, source_dir: str, title: str, subtitle: str = "",
             C.table(["Modelo", "Latência (1 janela)", "Por janela (lote)",
                      "Janelas/s", "Parâmetros", "model.keras"], rows,
                     "Custos de inferência e tamanho dos modelos.",
-                    label="tab:inferencia"),
+                    formats=FORMATS, label="tab:inferencia"),
             sub="Latência single-shot = custo de uma chamada do modelo para "
                 "uma janela (cenário de operação online, 1 previsão de 6 h "
                 "a cada ciclo); \"por janela (lote)\" é o custo amortizado "
