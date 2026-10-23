@@ -12,7 +12,6 @@ Usado pelos report.py em reports/lidar/<experimento>/.
 from __future__ import annotations
 
 import json
-import re
 import shutil
 import sqlite3
 import sys
@@ -259,32 +258,23 @@ def _hp_section(models: list) -> str:
         "model.json / banco de runs).", formats=FORMATS,
         label="tab:hiperparametros")
 
-    fams = [
-        ("ws 40–140 m — velocidade do vento (11 alturas, 10 em 10 m)",
-         lambda c: re.fullmatch(r"ws\d+", c) is not None),
-        ("v 40–140 m — componente do vento (11 alturas)",
-         lambda c: re.fullmatch(r"v\d+", c) is not None),
-        ("direção 40–140 m — seno/cosseno (11 alturas × 2)",
-         lambda c: re.fullmatch(r"dir\d+_(?:sin|cos)", c) is not None),
-        ("hora do dia cíclica (sin/cos)",
-         lambda c: c.startswith("hour_")),
-        ("cisalhamento do perfil (cis1–cis19)",
-         lambda c: re.fullmatch(r"cis\d+", c) is not None),
-        ("meteorologia de superfície (humid, temp)",
-         lambda c: c in ("humid", "temp")),
+    feat_rows = [
+        ("ws40–ws140", "velocidade horizontal do vento em 11 alturas "
+                       "(40–140 m, passo de 10 m)"),
+        ("v40–v140", "componente v do vento nas mesmas 11 alturas"),
+        ("dir_h_sin/cos", "direção do vento codificada em seno/cosseno nas "
+                          "11 alturas (22 colunas)"),
+        ("hour_sin/cos", "hora do dia codificada ciclicamente (2 colunas)"),
+        ("cis1–cis19", "cisalhamento vertical do perfil do vento (19 "
+                       "colunas) — somente nos LSTMs"),
+        ("humid, temp", "umidade relativa e temperatura de superfície "
+                        "(2 colunas)"),
     ]
-    feat_rows = []
-    for label, pred in fams:
-        cells = []
-        for e in entries:
-            n = sum(1 for f in e[5] if pred(f))
-            cells.append(str(n) if n else "—")
-        if any(c != "—" for c in cells):
-            feat_rows.append((label, *cells))
     feat_table = C.table(
-        ["Grupo de variáveis", *(e[0] for e in entries)], feat_rows,
-        "Grupos de variáveis de entrada por modelo (contagem de colunas; "
-        "os grupos somam as 48/67 colunas de entrada).", formats=FORMATS,
+        ["Variável", "Descrição"], feat_rows,
+        "Grupos de variáveis de entrada (44 + 2 colunas comuns a todos; "
+        "os LSTMs somam o cisalhamento, totalizando 67 colunas contra 48 "
+        "das TCNs).", formats=FORMATS,
         label="tab:entradas")
 
     return C.section(
