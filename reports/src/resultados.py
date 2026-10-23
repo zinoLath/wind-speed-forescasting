@@ -55,6 +55,8 @@ FIGURE_CAPTIONS = {
     "16_wavelet_vs_real": "Erro vs alvo wavelet vs erro ws100 bruto",
     "16c_significancia_dm_ab_loss": "DM das variantes de loss (A/B de função de perda)",
     "16d_mcs": "Model Confidence Set — p-valor de exclusão por modelo (agregado sobre os 36 horizontes)",
+    "16e_bootstrap_ci": ("ΔMSE (linha − coluna) com IC95% por bootstrap em blocos — "
+                         "* = IC exclui zero; positivo = modelo da linha pior"),
 }
 
 METRIC_ORDER = ("mse", "rmse", "mae", "r2")
@@ -85,7 +87,7 @@ FIGURE_THEMES = [
      ("05_mae_por_horizonte_real", "05_mae_por_horizonte_wavelet",
       "06_heatmap_mse_horizonte", "06_heatmap_r2_horizonte",
       "16_significancia_dm", "16b_significancia_dm_pvalor",
-      "16c_significancia_dm_ab_loss", "16d_mcs"),
+      "16c_significancia_dm_ab_loss", "16d_mcs", "16e_bootstrap_ci"),
      "O erro cresce com o horizonte — o esperado —, mas o ponto crítico é "
      "<strong>onde cada modelo cruza a persistência</strong>: passos curtos "
      "(1–6) tendem a ficar aquém do ingênuo, e a vantagem aparece nos "
@@ -94,7 +96,10 @@ FIGURE_THEMES = [
      "critério estatístico: célula positiva = modelo da linha com perda "
      "maior (pior); com poucas células significativas (p &lt; 0,05), as "
      "diferenças entre wrappers são empate técnico — o que orienta a "
-     "escolha por custo de treino/inferência em vez de só por MSE."),
+     "escolha por custo de treino/inferência em vez de só por MSE. O "
+     "heatmap de bootstrap em blocos reforça a leitura sem suposição "
+     "paramétrica: célula com <strong>*</strong> tem IC95% do ΔMSE que "
+     "exclui zero (2.000 reamostragens em blocos de 36 origens)."),
     ("Trajetórias e previsões autônomas",
      ("07_fan_chart", "08_rolling_forecast_real",
       "08_rolling_forecast_wavelet", "10_piores_predicoes_lstm"),

@@ -165,12 +165,44 @@ def build_tables(args) -> str:
             print(f"aviso: baselines ausentes ({BASELINES_JSON}); use --no-baselines "
                   "para silenciar", file=sys.stderr)
 
+    def check_implied_variance(rows, label):
+        """Vigia da variância implícita: MSE/(1−R²) tem de ser único.
+
+        MSE e R² de fontes diferentes (rodadas misturadas) implicam
+        variâncias distintas do alvo — a inconsistência clássica das
+        tabelas do artigo. Avisa (e aborta com --strict) quando as linhas
+        divergem além da tolerância.
+        """
+        if args.no_variance_guard:
+            return
+        implied = []
+        for nome, m in rows:
+            if m.get("r2") is None or m.get("mse") is None or m["r2"] >= 1:
+                continue
+            implied.append((nome, m["mse"] / (1.0 - m["r2"])))
+        if len(implied) < 2:
+            return
+        vals = [v for _, v in implied]
+        lo, hi = min(vals), max(vals)
+        spread = (hi - lo) / lo if lo else 0.0
+        if spread > 0.03:
+            detail = ", ".join(f"{n}={v:.3f}" for n, v in implied)
+            msg = (f"[vIGIA variância implícita] {label}: MSE/(1−R²) diverge "
+                   f"{spread*100:.1f}% entre linhas — tabela mistura fontes! "
+                   f"({detail})")
+            if args.strict:
+                sys.exit(msg)
+            print(f"AVISO: {msg}", file=sys.stderr)
+
     def to_cells(rows):
         return [(nome, fmt_num(m["r2"], args.nd, comma),
                  fmt_num(m["mse"], args.nd, comma),
                  fmt_num(m["mae"], args.nd, comma),
                  fmt_num(m["rmse"], args.nd, comma))
                 for nome, m in sorted(rows, key=lambda r: r[1]["r2"], reverse=True)]
+
+    check_implied_variance(all_rows, "tab:error_all")
+    check_implied_variance(h36_rows, "tab:error_h36")
 
     body_all = latexfmt.tabular_body(COLUMNS, to_cells(all_rows), args.format,
                                      align="c" * len(COLUMNS))
@@ -247,6 +279,11 @@ def main() -> None:
                     help="vírgula é o padrão dos templates sbsr/steam")
     ap.add_argument("--nd", type=int, default=3, help="casas decimais (default: 3)")
     ap.add_argument("--no-baselines", action="store_true")
+    ap.add_argument("--strict", action="store_true",
+                    help="aborta (em vez de só avisar) se a variância "
+                         "implícita MSE/(1−R²) divergir entre linhas")
+    ap.add_argument("--no-variance-guard", action="store_true",
+                    help="desliga o vigia de variância implícita")
     ap.add_argument("--trim-boundary-origins", type=int, default=0,
                     help="descarta as primeiras N origens do teste e "
                          "recomputa os baselines na grade cortada "

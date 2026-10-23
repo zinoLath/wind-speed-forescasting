@@ -30,9 +30,19 @@ python scripts/sbsr_tables.py                                    # stdout sbsr
 python scripts/sbsr_tables.py --out reports/lidar/8020/tabelas_sbsr.tex
 python scripts/sbsr_tables.py --format steam | --format generic
 python scripts/sbsr_tables.py --round-dir data/results/report_<rodada>
+python scripts/sbsr_tables.py --trim-boundary-origins 72         # baselines na grade cortada
 python scripts/sbsr_tables.py --no-baselines --decimal point --nd 2
+python scripts/sbsr_tables.py --strict                           # aborta se variância implícita divergir
 # labels/captions sobrescrevíveis: --label-all/--caption-all/--label-h36/--caption-h36
 ```
+
+## Vigia de variância implícita (23/10/2026)
+
+`check_implied_variance` roda sobre as duas tabelas: se `MSE/(1−R²)`
+divergir >3% entre linhas, avisa (ou **aborta com `--strict`**) — é o
+safeguard contra o problema das tabelas misturando rodadas
+(`variancia-implicita.md`). Testado: flagou TCN-Bi injetada com var 2,70
+vs 2,78 do resto. Desligável com `--no-variance-guard`.
 
 ## Persistência de per_horizon
 

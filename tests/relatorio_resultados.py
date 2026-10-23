@@ -955,6 +955,115 @@ def plot_horizon_r2_heatmap(recs, extras, baselines=None):
     savefig(fig, "06_heatmap_r2_horizonte.png")
 
 
+def compute_bootstrap_ci_matrix(recs, extras, base_preds=None,
+                                horizons=(6, 12, 24, 36), n_boot=1000,
+                                block=36, alpha=0.05, seed=20261023):
+    """ΔMSE (linha − coluna) com IC por bootstrap em blocos, por horizonte.
+
+    Complementa o DM: em vez de p-valor assintótico, cada célula recebe o
+    diferencial de perda quadrática e o IC95% por bootstrap circular em
+    blocos de ``block`` origens (preserva a autocorrelação das janelas
+    sobrepostas e dos regimes de vento). Célula marcada = IC exclui zero.
+
+    Alinhamento: os baselines (h=1 mira a própria origem) são deslocados
+    em +1 horizonte para casar o alvo com o DL (h=1 mira origem+1 passo).
+    """
+    def error_wide_shifted(df, pred_col, shift=0):
+        if "actual_raw" not in df:
+            df = df.assign(actual_raw=df["actual"])
+        e = df["actual_raw"] - df[pred_col]
+        w = (df.assign(e=e)
+               .pivot(index="origin", columns="horizon", values="e")
+               .sort_index().sort_index(axis=1))
+        if shift:
+            w.columns = [h - shift for h in w.columns]
+        return w
+
+    series, names, labels = {}, [], []
+    for r in recs:
+        series[r["name"]] = error_wide_shifted(
+            extras[r["name"]]["all_df"], "predicted")
+        names.append(r["name"])
+        labels.append(r["short"])
+    series["__persistence__"] = error_wide_shifted(
+        extras[recs[0]["name"]]["all_df"], "persistence")
+    names.append("__persistence__")
+    labels.append("Pers.")
+    if base_preds is not None:
+        series["__arima__"] = error_wide_shifted(base_preds, "arima", shift=1)
+        series["__rf__"] = error_wide_shifted(base_preds, "rf", shift=1)
+        names += ["__arima__", "__rf__"]
+        labels += ["ARIMA", "RF"]
+
+    rng = np.random.default_rng(seed)
+    matrices = {}
+    for h in horizons:
+        present = [k for k in names if h in series[k].columns]
+        common = None
+        for k in present:
+            w = series[k][[h]]
+            ii = w.index[w[h].notna()]
+            common = ii if common is None else common.intersection(ii)
+        E = np.column_stack([series[k].loc[common, h].to_numpy() ** 2
+                             for k in present])
+        n = len(common)
+        k_all = len(names)
+        n_blocks = int(np.ceil(n / block))
+        starts = rng.integers(0, n, size=(n_boot, n_blocks))
+        idx = ((starts[:, :, None] + np.arange(block)[None, None, :]) % n)
+        idx = idx.reshape(n_boot, -1)[:, :n]
+        delta = np.full((k_all, k_all), np.nan)
+        sig = np.zeros((k_all, k_all), bool)
+        for a in range(len(present)):
+            for b in range(a + 1, len(present)):
+                dd = E[:, a] - E[:, b]
+                boot = dd[idx].mean(axis=1)
+                lo, hi = np.percentile(boot, [100 * alpha / 2,
+                                              100 * (1 - alpha / 2)])
+                i, j = names.index(present[a]), names.index(present[b])
+                delta[i, j] = dd.mean()
+                delta[j, i] = -dd.mean()
+                sig[i, j] = sig[j, i] = not (lo < 0 < hi)
+        matrices[h] = {"delta": delta, "sig": sig, "n": n}
+    return {"horizons": list(horizons), "labels": labels,
+            "matrices": matrices, "n_boot": n_boot, "block": block,
+            "alpha": alpha}
+
+
+def plot_bootstrap_ci_matrix(bs, fname="16e_bootstrap_ci.png"):
+    """Grade 2×2 dos ΔMSE com IC por bootstrap em blocos (* = IC exclui 0)."""
+    labels = bs["labels"]
+    k = len(labels)
+    fig, axes = plt.subplots(2, 2, figsize=(12.5, 10.5), layout="constrained")
+    fig.get_layout_engine().set(w_pad=0.04, h_pad=0.04, wspace=0.04, hspace=0.07)
+    vmax = max(np.nanmax(np.abs(m["delta"])) for m in bs["matrices"].values())
+    for ax_i, (ax, h) in enumerate(zip(axes.ravel(), bs["horizons"])):
+        m = bs["matrices"][h]
+        im = ax.imshow(m["delta"], aspect="equal", cmap="RdBu_r",
+                       vmin=-vmax, vmax=vmax, interpolation="nearest")
+        ax.set_title(f"h={h} — {m['n']} origens")
+        ax.set_yticks(range(k), labels if ax_i % 2 == 0 else [""] * k)
+        ax.set_xticks(range(k))
+        if ax_i == 2:
+            ax.set_xticklabels(labels, rotation=45, ha="right")
+        for i in range(k):
+            for j in range(k):
+                if i == j or not np.isfinite(m["delta"][i, j]):
+                    continue
+                star = "*" if m["sig"][i, j] else ""
+                ax.text(j, i, f"{m['delta'][i, j]:+.2f}{star}",
+                        ha="center", va="center", fontsize=7.5,
+                        color="black", fontweight="bold" if star else "normal",
+                        bbox=dict(boxstyle="round,pad=0.15", fc="white",
+                                  alpha=0.7, lw=0))
+    cbar = fig.colorbar(im, ax=axes, pad=0.04, shrink=0.9)
+    cbar.set_label("ΔMSE (linha − coluna) (m/s)²")
+    fig.suptitle(f"ΔMSE com IC95% por bootstrap em blocos "
+                 f"({bs['n_boot']} reamostragens, bloco {bs['block']} "
+                 f"origens) — * = IC exclui 0; positivo = linha pior")
+    savefig(fig, fname)
+
+
 def compute_dm_analysis(recs, extras, alpha=0.05, power=2):
     """Testes de Diebold–Mariano pareados (perda quadrática vs ws100 bruto).
 
@@ -2854,6 +2963,8 @@ def main():
     dmx = compute_dm_horizon_matrix(recs, extras, base_preds)
     plot_dm_matrix(dmx)
     plot_dm_pvalue_matrix(dmx)
+    bs = compute_bootstrap_ci_matrix(recs, extras, base_preds)
+    plot_bootstrap_ci_matrix(bs)
 
     mcs = compute_mcs(recs, extras, base_preds)
     plot_mcs(mcs)
