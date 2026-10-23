@@ -464,8 +464,7 @@ def build_report(ctx, *, source_dir: str, title: str, subtitle: str = "",
                  if float(r[2].replace(",", ".")) == best_mse]
     parts.append(C.section(
         "Métricas — todos os horizontes (1–36 passos, vs ws100 bruto)",
-        C.table(["Modelo", "R²", "MSE (m/s)²", "RMSE (m/s)", "MAE (m/s)"],
-                rows,
+        C.table(["Modelo", "R²", "MSE", "RMSE", "MAE"], rows,
                 "Métricas de erro dos modelos seq2seq e dos baselines "
                 "estatísticos na mesma grade de origens.",
                 formats=FORMATS, label="tab:metricas_geral",
