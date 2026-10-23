@@ -1037,22 +1037,21 @@ def plot_bootstrap_ci_matrix(bs, fname="16e_bootstrap_ci.png"):
     fig, axes = plt.subplots(2, 2, figsize=(12.5, 10.5), layout="constrained")
     fig.get_layout_engine().set(w_pad=0.04, h_pad=0.04, wspace=0.04, hspace=0.07)
     vmax = max(np.nanmax(np.abs(m["delta"])) for m in bs["matrices"].values())
-    for ax_i, (ax, h) in enumerate(zip(axes.ravel(), bs["horizons"])):
+    for ax in axes.ravel():
+        h = bs["horizons"][list(axes.ravel()).index(ax)]
         m = bs["matrices"][h]
         im = ax.imshow(m["delta"], aspect="equal", cmap="RdBu_r",
                        vmin=-vmax, vmax=vmax, interpolation="nearest")
-        ax.set_title(f"h={h} — {m['n']} origens")
-        ax.set_yticks(range(k), labels if ax_i % 2 == 0 else [""] * k)
-        ax.set_xticks(range(k))
-        if ax_i == 2:
-            ax.set_xticklabels(labels, rotation=45, ha="right")
+        ax.set_title(f"h={h}", fontsize=14)
+        ax.set_yticks(range(k), labels, fontsize=11)
+        ax.set_xticks(range(k), labels, rotation=45, ha="right", fontsize=11)
         for i in range(k):
             for j in range(k):
                 if i == j or not np.isfinite(m["delta"][i, j]):
                     continue
                 star = "*" if m["sig"][i, j] else ""
                 ax.text(j, i, f"{m['delta'][i, j]:+.2f}{star}",
-                        ha="center", va="center", fontsize=7.5,
+                        ha="center", va="center", fontsize=9,
                         color="black", fontweight="bold" if star else "normal",
                         bbox=dict(boxstyle="round,pad=0.15", fc="white",
                                   alpha=0.7, lw=0))
@@ -1238,28 +1237,25 @@ DM_GRID_TITLES = {6: "h6 (1 h)", 12: "h12 (2 h)", 24: "h24 (4 h)", 36: "h36 (6 h
 
 def _dm_grid(dmx, key, cmap, vmin, vmax, cbar_label, fig_title, fname,
              cell_text):
-    """Grade 2×2 compartilhada das matrizes DM: legenda à direita, painéis
-    compactos, nomes dos métodos só na coluna esquerda (y) e na linha de
-    baixo à esquerda (x)."""
+    """Grade 2×2 compartilhada das matrizes DM: legenda à direita, ticks
+    com os nomes dos métodos em todos os painéis."""
     labels = dmx["labels"]
     k = len(labels)
-    fig, axes = plt.subplots(2, 2, figsize=(12.5, 10.5), layout="constrained")
+    fig, axes = plt.subplots(2, 2, figsize=(13.5, 11), layout="constrained")
     fig.get_layout_engine().set(w_pad=0.04, h_pad=0.04, wspace=0.04, hspace=0.07)
-    for idx, (ax, h) in enumerate(zip(axes.ravel(), dmx["horizons"])):
+    for ax, h in zip(axes.ravel(), dmx["horizons"]):
         m = dmx["matrices"][h]
         im = ax.imshow(np.ma.masked_invalid(m[key]), aspect="equal", cmap=cmap,
                        vmin=vmin, vmax=vmax, interpolation="nearest")
-        ax.set_title(f"{DM_GRID_TITLES.get(h, f'h{h}')} — {m['n']} origens")
-        ax.set_yticks(range(k), labels if idx % 2 == 0 else [""] * k)
-        ax.set_xticks(range(k))
-        if idx == 2:
-            ax.set_xticklabels(labels, rotation=45, ha="right")
+        ax.set_title(DM_GRID_TITLES.get(h, f"h{h}"), fontsize=14)
+        ax.set_yticks(range(k), labels, fontsize=11)
+        ax.set_xticks(range(k), labels, rotation=45, ha="right", fontsize=11)
         for i in range(k):
             for j in range(k):
                 if i == j or not np.isfinite(m[key][i, j]):
                     continue
                 ax.text(j, i, cell_text(m, i, j), ha="center", va="center",
-                        fontsize=8, color="black",
+                        fontsize=9.5, color="black",
                         bbox=dict(boxstyle="round,pad=0.15", fc="white",
                                   alpha=0.7, lw=0))
     cbar = fig.colorbar(im, ax=axes, pad=0.04, shrink=0.9)
@@ -1287,7 +1283,7 @@ def plot_dm_matrix(dmx):
         dmx, "dm", "RdBu_r", -vmax, vmax,
         "DM corrigido (t) — positivo: modelo da linha tem perda maior (pior)",
         "Teste de Diebold–Mariano por horizonte "
-        f"(* p < {dmx['alpha']:.2f}; ** p < 0,01; diagonal vazia)",
+        f"(* p < {dmx['alpha']:.2f}; ** p < 0,01)",
         "16_significancia_dm.png", cell_text,
     )
 
@@ -1302,8 +1298,7 @@ def plot_dm_pvalue_matrix(dmx, fname="16b_significancia_dm_pvalor.png",
     _dm_grid(
         dmx, "p", "RdYlGn_r", 0.0, 0.10,
         "p-valor (verde < 0,05 = diferença significativa; escala até 0,10)",
-        suptitle or ("p-valores do teste de Diebold–Mariano por horizonte "
-                     "(diagonal vazia)"),
+        suptitle or "p-valores do teste de Diebold–Mariano por horizonte",
         fname, cell_text,
     )
 
