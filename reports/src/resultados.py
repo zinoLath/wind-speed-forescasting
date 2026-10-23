@@ -12,6 +12,7 @@ Usado pelos report.py em reports/lidar/<experimento>/.
 from __future__ import annotations
 
 import json
+import re
 import shutil
 import sqlite3
 import sys
@@ -228,7 +229,7 @@ def _hp_section(models: list) -> str:
         hp = m.get("hp") or {}
         feats = m.get("features") or []
         entries.append((m.get("short", m.get("name", "?")), hp, len(feats),
-                        m.get("seed"), m.get("loss")))
+                        m.get("seed"), m.get("loss"), feats))
     if not any(e[1] for e in entries):
         return ""
 
@@ -251,19 +252,52 @@ def _hp_section(models: list) -> str:
              *(str(e[2]) if e[2] else "—" for e in entries)),
             ("loss", *(cell(e[4]) for e in entries))]
     rows += [(k, *(cell(e[1].get(k)) for e in entries)) for k in keys]
+    hp_table = C.table(
+        ["Parâmetro", *(e[0] for e in entries)], rows,
+        "Hiperparâmetros de treino de cada modelo da rodada "
+        "(seed, colunas de entrada e o dicionário gravado no "
+        "model.json / banco de runs).", formats=FORMATS,
+        label="tab:hiperparametros")
+
+    fams = [
+        ("ws 40–140 m — velocidade do vento (11 alturas, 10 em 10 m)",
+         lambda c: re.fullmatch(r"ws\d+", c) is not None),
+        ("v 40–140 m — componente do vento (11 alturas)",
+         lambda c: re.fullmatch(r"v\d+", c) is not None),
+        ("direção 40–140 m — seno/cosseno (11 alturas × 2)",
+         lambda c: re.fullmatch(r"dir\d+_(?:sin|cos)", c) is not None),
+        ("hora do dia cíclica (sin/cos)",
+         lambda c: c.startswith("hour_")),
+        ("cisalhamento do perfil (cis1–cis19)",
+         lambda c: re.fullmatch(r"cis\d+", c) is not None),
+        ("meteorologia de superfície (humid, temp)",
+         lambda c: c in ("humid", "temp")),
+    ]
+    feat_rows = []
+    for label, pred in fams:
+        cells = []
+        for e in entries:
+            n = sum(1 for f in e[5] if pred(f))
+            cells.append(str(n) if n else "—")
+        if any(c != "—" for c in cells):
+            feat_rows.append((label, *cells))
+    feat_table = C.table(
+        ["Grupo de variáveis", *(e[0] for e in entries)], feat_rows,
+        "Grupos de variáveis de entrada por modelo (contagem de colunas; "
+        "os grupos somam as 48/67 colunas de entrada).", formats=FORMATS,
+        label="tab:entradas")
+
     return C.section(
         "Hiperparâmetros",
-        C.table(["Parâmetro", *(e[0] for e in entries)], rows,
-                "Hiperparâmetros de treino de cada modelo da rodada "
-                "(seed, colunas de entrada e o dicionário gravado no "
-                "model.json / banco de runs).", formats=FORMATS,
-                label="tab:hiperparametros"),
+        hp_table + feat_table,
         sub="TCNs herdam os HPs da canônica 16/10 (dilatações estáticas C′ "
             "com <code>encoder_dil_depth</code>/<code>decoder_dil_depth</code> "
             "e kernel/stacks fixos); LSTMs usam os HPs do HPO 80/20. A perda "
-            "é MSE pura em todos os wrappers. <code>colunas de entrada</code> "
-            "reflete o <code>feature_keep</code> por wrapper do lineup misto "
-            "(48/48/67/67 colunas).",
+            "é MSE pura em todos os wrappers. As colunas de entrada seguem o "
+            "<code>feature_keep</code> por wrapper do lineup misto "
+            "(48/48/67/67); sobre elas o wrapper ainda acrescenta os canais "
+            "de alvo (<code>ws100_wavelet</code> e último observado) ao "
+            "encoder.",
         sec_id="hiperparametros")
 
 
