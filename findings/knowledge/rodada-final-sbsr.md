@@ -150,6 +150,39 @@ SOBRESCREVE `self.persistence_gate` com o kwarg default `False`
 do prepare()**, não como atributo prévio (o `gate_mode` pode ir após,
 prepare não o toca).
 
+## Clark & West nos pares aninhados (23/10/2026)
+
+CW MSPE-ajustado (`src/utils.py:clark_west`), agregado por origem,
+run #5 (grade −72), restrito = uni, irrestrito = Bi:
+
+- **TCN × TCN-Bi: CW = +4,25, p < 0,0001 → bidirecionalidade ajuda
+  SIGNIFICATIVAMENTE na TCN** — primeiro resultado significativo a
+  favor de qualquer modelo na rodada; o DM não captura porque é
+  inválido/subdimensionado em comparações aninhadas (exatamente a
+  crítica de Clark & West 2007).
+- **LSTM × LSTM-Bi: CW = −0,49, p = 0,62** → Bi não supera a uni
+  (nada significativo, nem por horizonte).
+- Por horizonte: 0 significativos em ambos os pares (o sinal do TCN
+  par é agregado).
+
+Narrativa do paper: a alegação de bidirecionalidade se sustenta
+estatisticamente **na TCN** com o teste apropriado a modelos
+aninhados (cite Clark & West 2007); nos LSTMs, não.
+
+## CW TCN-Bi × ARIMA (23/10) — NÃO USAR (par não-aninhado)
+
+Rodado a pedido, mas **inválido como evidência**: ARIMA não está
+aninhado na TCN-Bi — fora do aninhamento o termo de correção
+(A−T)² do CW sempre soma a favor do modelo irrestrito, e o resultado
+denuncia o artefato: "significativo a favor da TCN-Bi em h1–18"
+exatamente onde as predições mais divergem, **inclusive nos horizontes
+h1–17 em que o MSPE cru do ARIMA é MELHOR** (R² h1: ARIMA 0,888 vs
+TCN-Bi 0,844). CW agregado +2,09/p=0,037 = viés, não achado. Para
+DL × ARIMA o instrumento continua sendo DM/HLN (0 significativos no
+agregado) + comparação descritiva por horizonte. Nota de alinhamento:
+baseline (origin, h=1) mira a própria origem — o par com o DL exige
+shift de +10 min na origem do baseline.
+
 ## Persistência no MCS — leitura por horizonte (argumento do paper)
 
 (números na grade completa pré-corte; a conclusão qualitativa —
