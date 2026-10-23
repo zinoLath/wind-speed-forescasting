@@ -6,18 +6,26 @@ relatório curado do hub (reports/lidar/<protocolo>/report.py). O HTML
 standalone legado (relatorio_resultados.html) foi removido — a página do hub
 o substitui.
 
+Toda run é gravada no banco SQLite (data/predictions.db, ver
+src/predictions_db.py): métricas por horizonte, hp, features e as predições
+linha a linha — os relatórios do hub leem do banco antes do evaluation.json,
+e --from-db regenera figuras/DM/MCS a partir das predições gravadas, sem GPU.
+
 Foco: lstm, lstm_bi, tcn, tcn_bi (série LiDAR, dataset.csv).
 
 Executar a partir da raiz do projeto:
     python tests/relatorio_resultados.py
+    python tests/relatorio_resultados.py --from-db lidar/8020  # sem GPU
 
 Saída:
     <out>/images/*.png
     <out>/evaluation.json
+    data/predictions.db (run gravada; --no-db para pular)
 """
 
 import argparse
 import json
+import sqlite3
 import sys
 import time
 from collections import Counter
@@ -35,7 +43,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-from src import common
+from src import common, predictions_db
 from src.models.tcn_hp import apply_static_dilations
 from src.utils import diebold_mariano, diebold_mariano_loss_diff, \
     model_confidence_set
@@ -69,6 +77,58 @@ def load_baselines():
     return out
 
 
+def trim_boundary_origins(df, n, label):
+    """Descarta as primeiras *n* origens do grid de teste.
+
+    Origens cuja janela de entrada cruza a fronteira treino/teste (72
+    passos) consomem dados de treino no encoder; para eliminar qualquer
+    argumento de vazamento, o protocolo permite removê-las de TODOS os
+    métodos (DL e baselines) — mesma grade, comparação justa.
+    """
+    if n <= 0 or df is None or len(df) == 0:
+        return df
+    origins = np.sort(df["origin"].unique())
+    if len(origins) <= n:
+        print(f"[trim-boundary] {label}: {len(origins)} origens <= n={n}; "
+              "nada restaria — corte ignorado")
+        return df
+    cut = origins[n - 1]
+    kept = df[df["origin"] > cut]
+    print(f"[trim-boundary] {label}: {len(origins)} -> "
+          f"{kept['origin'].nunique()} origens (descartadas as primeiras "
+          f"{n}, ate {pd.Timestamp(cut)})")
+    return kept
+
+
+def recompute_baseline_metrics(base_preds, base_json):
+    """Recalcula as métricas dos baselines na grade já cortada."""
+    out = {"metrics": json.loads(json.dumps(base_json))}
+    for key in ("arima", "rf", "persistence"):
+        if key not in base_preds.columns:
+            continue
+        m_all = common.compute_metrics(base_preds["actual"],
+                                       base_preds[key])
+        h_max = int(base_preds["horizon"].max())
+        roll = base_preds[base_preds["horizon"] == h_max]
+        m_roll = common.compute_metrics(roll["actual"], roll[key])
+        if key in out["metrics"]:
+            out["metrics"][key]["all_horizons"] = m_all
+            out["metrics"][key]["rolling"] = m_roll
+        else:
+            out["metrics"][key] = {"all_horizons": m_all, "rolling": m_roll}
+    rows = []
+    for h, g in base_preds.groupby("horizon"):
+        row = {"horizon": int(h)}
+        for key in ("arima", "rf", "persistence"):
+            m = common.compute_metrics(g["actual"], g[key])
+            row[f"{key}_mae"] = m["mae"]
+            row[f"{key}_rmse"] = m["rmse"]
+            row[f"{key}_r2"] = m["r2"]
+        rows.append(row)
+    out["per_horizon"] = pd.DataFrame(rows).sort_values("horizon")
+    return out
+
+
 def load_baseline_predictions():
     """Predições long (origin, timestamp, horizon, actual, persistence, arima, rf)."""
     path = BASELINES_DIR / "predictions_long.csv"
@@ -85,6 +145,17 @@ def load_baseline_predictions():
 
 FOCUS_KEYS = ("lstm", "lstm_bi", "tcn", "tcn_bi")
 SEED = 42
+# Nível da wavelet da run corrente; None = derivar do model.json dos modelos
+# (avaliação na GPU). --from-db fixa o valor gravado na run.
+DENOISE_LEVEL = None
+# Origens de fronteira a descartar (--trim-boundary-origins); 0 = mantém
+TRIM_BOUNDARY = 0
+
+
+def current_denoise_level() -> int:
+    if DENOISE_LEVEL is not None:
+        return int(DENOISE_LEVEL)
+    return int(load_metadata()[0]["meta"].get("denoise_level", 2))
 
 COLORS = {
     "Seq2Seq_LSTM": "#1f77b4",
@@ -340,6 +411,13 @@ def evaluate_models(dataset):
     results = {}
     extras = {}
 
+    # lineup misto: cada modelo declara "feature_keep" no model.json; o
+    # dataset carregado é a união, e aqui cada modelo recebe só as colunas
+    # com as quais foi treinado
+    extras_all = set()
+    for entry in models:
+        extras_all |= set(entry["meta"].get("feature_keep", ()))
+
     for entry in models:
         meta = entry["meta"]
         name = meta["name"]
@@ -347,7 +425,9 @@ def evaluate_models(dataset):
         ratios = meta.get("dataset", {})
         train_ratio = ratios.get("train_ratio", 0.75)
         val_ratio = ratios.get("val_ratio", 0.20)
-        train_df, val_df, test_df = common.split_dataset(dataset, train_ratio, val_ratio)
+        drop_cols = extras_all - set(meta.get("feature_keep", ()))
+        df_model = dataset.drop(columns=drop_cols) if drop_cols else dataset
+        train_df, val_df, test_df = common.split_dataset(df_model, train_ratio, val_ratio)
         val_end = len(train_df) + len(val_df)
         # prepare() com create_sequences=False nao usa o val, mas o denoise
         # (wavelet) sobre val vazio quebra o pywt — passe o tail do treino.
@@ -359,16 +439,18 @@ def evaluate_models(dataset):
         t0 = time.perf_counter()
         # mesma grade de origens dos baselines: primeira origem = primeira
         # linha do teste, encoder consome o fim da fronteira val/teste
-        eval_df = dataset.iloc[max(0, val_end - wrapper.input_steps):]
+        eval_df = df_model.iloc[max(0, val_end - wrapper.input_steps):]
         all_df = common.predict_all_horizons(wrapper, eval_df)
         eval_sec = time.perf_counter() - t0
         all_df["actual_raw"] = dataset["ws100"].reindex(all_df["timestamp"]).to_numpy()
         if observed is not None:
             all_df = all_df[all_df["timestamp"].isin(observed)]
+        all_df = trim_boundary_origins(all_df, TRIM_BOUNDARY, f"{key}/dense")
 
-        roll_df = rolling_frame(wrapper, dataset, val_end)
+        roll_df = rolling_frame(wrapper, df_model, val_end)
         if observed is not None:
             roll_df = roll_df[roll_df["timestamp"].isin(observed)]
+        roll_df = trim_boundary_origins(roll_df, TRIM_BOUNDARY, f"{key}/rolling")
         timing = timed_inference(wrapper, test_df)
 
         per_horizon = common.horizon_metrics(all_df.assign(actual=all_df["actual_raw"]))
@@ -390,6 +472,8 @@ def evaluate_models(dataset):
             "params": int(wrapper.model.count_params()),
             "size_mb": float((entry["dir"] / "model.keras").stat().st_size / 1e6),
             "eval_sec": eval_sec,
+            "features": list(df_model.columns),
+            "output_steps": int(meta["output_steps"]),
             "all": m_all,
             "all_denoised": m_all_den,
             "rolling": m_roll,
@@ -805,23 +889,29 @@ def plot_horizon_heatmap(recs, extras, baselines=None):
             labels.append(f"{label} (baseline)")
     mat = np.vstack(mses)
 
-    fig, ax = plt.subplots(figsize=(8, 1.6 + 0.35 * len(labels)))
+    # Fontes grandes: no artigo a figura entra a \linewidth de coluna
+    # (≈0,41× a largura original), então o tamanho efetivo ≈ fontsize × 0,41.
+    fig, ax = plt.subplots(figsize=(9, 1.7 + 0.34 * len(labels)))
     im = ax.imshow(mat, aspect="auto", cmap="RdYlGn_r",
                    vmin=float(mat.min()), vmax=float(mat.max()),
                    interpolation="nearest")
     ax.set_xlim(-0.5, 36.6)
     ax.set_yticks(range(len(labels)), labels)
+    ax.tick_params(labelsize=14)
     _ticks = [5, 11, 17, 23, 29, 35]
     ax.set_xticks(_ticks, [str(6 * (k + 1)) for k in range(6)])
-    ax.set_xlabel("Horizonte (passos de 10 min)")
-    ax.set_title("MSE ((m/s)²) por modelo e horizonte (verde = menor erro)")
+    ax.set_xlabel("Horizonte (passos de 10 min)", fontsize=15)
+    ax.set_title("MSE ((m/s)²) por modelo e horizonte (verde = menor erro)",
+                 fontsize=16)
     for j in _ticks:
         for i in range(len(labels)):
             v = mat[i, j]
             ax.text(j, i, f"{v:.2f}", ha="center", va="center",
-                    fontsize=10, color="black",
+                    fontsize=13, color="black",
                     bbox=dict(boxstyle="round,pad=0.12", fc="white", alpha=0.75, lw=0))
-    fig.colorbar(im, ax=ax, pad=0.01).set_label("MSE ((m/s)²)")
+    cbar = fig.colorbar(im, ax=ax, pad=0.01)
+    cbar.set_label("MSE ((m/s)²)", fontsize=15)
+    cbar.ax.tick_params(labelsize=13)
     savefig(fig, "06_heatmap_mse_horizonte.png")
 
 
@@ -840,23 +930,28 @@ def plot_horizon_r2_heatmap(recs, extras, baselines=None):
             labels.append(label)
     mat = np.vstack(r2s)
 
-    fig, ax = plt.subplots(figsize=(8, 1.6 + 0.35 * len(labels)))
+    # Fontes grandes: ver justificativa em plot_horizon_heatmap.
+    fig, ax = plt.subplots(figsize=(9, 1.7 + 0.34 * len(labels)))
     im = ax.imshow(mat, aspect="auto", cmap="RdYlGn",
                    vmin=float(mat.min()), vmax=float(mat.max()),
                    interpolation="nearest")
     ax.set_xlim(-0.5, 36.6)
     ax.set_yticks(range(len(labels)), labels)
+    ax.tick_params(labelsize=14)
     _ticks = [5, 11, 17, 23, 29, 35]
     ax.set_xticks(_ticks, [str(6 * (k + 1)) for k in range(6)])
-    ax.set_xlabel("Horizonte (passos de 10 min)")
-    ax.set_title("R² por modelo e horizonte (verde = melhor; 0 = equivalente à média)")
+    ax.set_xlabel("Horizonte (passos de 10 min)", fontsize=15)
+    ax.set_title("R² por modelo e horizonte (verde = melhor; 0 = equivalente à média)",
+                 fontsize=16)
     for j in _ticks:
         for i in range(len(labels)):
             v = mat[i, j]
             ax.text(j, i, f"{v:+.2f}", ha="center", va="center",
-                    fontsize=10, color="black",
+                    fontsize=13, color="black",
                     bbox=dict(boxstyle="round,pad=0.12", fc="white", alpha=0.75, lw=0))
-    fig.colorbar(im, ax=ax, pad=0.01).set_label("R²")
+    cbar = fig.colorbar(im, ax=ax, pad=0.01)
+    cbar.set_label("R²", fontsize=15)
+    cbar.ax.tick_params(labelsize=13)
     savefig(fig, "06_heatmap_r2_horizonte.png")
 
 
@@ -1249,7 +1344,7 @@ def plot_worst_predictions(recs, extras, dataset, top_n=12):
 
 
 def plot_rolling(recs, extras, base_preds=None):
-    level = load_metadata()[0]["meta"].get("denoise_level", 2)
+    level = current_denoise_level()
     base_roll = None
     if base_preds is not None:
         sub = base_preds[base_preds["horizon"] == base_preds["horizon"].max()]
@@ -1859,8 +1954,7 @@ def build_wavelet_section(recs, extras, dataset):
     val_ratio = SPLIT_RATIOS["val_ratio"]
     train_end = int(n * train_ratio)
     val_end = train_end + int(n * val_ratio)
-    meta = load_metadata()
-    level = meta[0]["meta"].get("denoise_level", 2)
+    level = current_denoise_level()
 
     ws100 = dataset["ws100"].to_numpy()
     ws_w = wavelet_denoising(ws100, wavelet="sym18", level=level)[:n]
@@ -2528,8 +2622,122 @@ def build_html(recs, dataset_info, hz_stats, arch_records, extras, dataset,
     return html
 
 
+# ----------------------------------------------------------------------------
+# Banco de runs (data/predictions.db)
+# ----------------------------------------------------------------------------
+def derive_report_key(out_dir) -> str | None:
+    """Deriva o report_id do hub a partir da pasta de saída (heurística).
+
+    report_8020 -> lidar/8020; report_homologado -> lidar/homologado.
+    Pastas fora do padrão report_* não têm relatório associado.
+    """
+    name = Path(out_dir).name
+    if name.startswith("report_"):
+        return f"lidar/{name[len('report_'):].replace('_', '-')}"
+    return None
+
+
+def record_run(results, extras, args, models_dir, dataset, denoise_level):
+    """Grava a run avaliada no banco SQLite; retorna o id (None se falhar)."""
+    report_key = args.report or derive_report_key(models_dir) \
+        or derive_report_key(OUT_DIR)
+    category = args.run_category or (report_key.replace("/", " ")
+                                     if report_key else "avulsa")
+    title = args.run_title or OUT_DIR.name
+    try:
+        conn = predictions_db.connect()
+    except sqlite3.Error as error:
+        print(f"aviso: banco indisponível ({error}); run não gravada")
+        return None
+    try:
+        run_id = predictions_db.record_run_from_evaluation(
+            conn, results=results, extras=extras, category=category,
+            title=title, description=args.run_description,
+            report_id=report_key, models_dir=str(models_dir),
+            dataset_rows=len(dataset), train_ratio=SPLIT_RATIOS["train_ratio"],
+            val_ratio=SPLIT_RATIOS["val_ratio"],
+            denoise_level=denoise_level,
+            source_file="tests/relatorio_resultados.py",
+            source_cmd=[sys.executable, *sys.argv],
+            out_file=str(EVAL_CACHE),
+            replace=not args.keep_prior)
+    except sqlite3.Error as error:
+        print(f"aviso: falha ao gravar a run no banco ({error})")
+        return None
+    finally:
+        conn.close()
+    print(f"Banco de runs: run #{run_id} em {predictions_db.DB_PATH} "
+          f"(report={report_key or '—'})")
+    return run_id
+
+
+def run_from_database(key, dataset):
+    """Reconstitui results/extras de uma run gravada no banco (sem GPU).
+
+    O banco guarda origem/timestamp/horizonte/real/predito; as colunas
+    derivadas (alvo wavelet, persistência) são recomputadas do dataset —
+    determinísticas — e as métricas por horizonte voltam de run_model_stath.
+    """
+    from src.utils import wavelet_denoising
+
+    conn = predictions_db.connect()
+    try:
+        run = predictions_db.resolve_run(conn, key)
+        if run is None:
+            raise SystemExit(
+                f"Run não encontrada no banco ({predictions_db.DB_PATH}): {key}")
+        results = predictions_db.results_dict(conn, run["id"])
+        if not results:
+            raise SystemExit(f"Run #{run['id']} não tem modelos gravados.")
+        print(f"Banco de runs: run #{run['id']} — {run['title']} "
+              f"({run['category']}, {_fmt_ts_short(run['created_at'])})")
+        level = run["denoise_level"] or 2
+        wave = pd.Series(
+            wavelet_denoising(dataset["ws100"].to_numpy(), wavelet="sym18",
+                              level=level),
+            index=dataset.index)
+        extras = {}
+        for name, entry in results.items():
+            dense = predictions_db.predictions_df(conn, entry["model_id"],
+                                                  mode="dense")
+            if dense.empty:
+                raise SystemExit(
+                    f"Run #{run['id']} / {name} não tem predições gravadas; "
+                    "reavalie na GPU e regenere o banco.")
+            dense["actual_raw"] = dense["actual"]
+            dense["actual"] = wave.reindex(dense["timestamp"]).to_numpy()
+            dense["persistence"] = wave.reindex(dense["origin"]).to_numpy()
+            rolling = predictions_db.predictions_df(conn, entry["model_id"],
+                                                    mode="rolling")
+            rolling["actual_raw"] = rolling["actual"]
+            rolling["actual_denoised"] = wave.reindex(
+                rolling["timestamp"]).to_numpy()
+            roll_df = rolling[["origin", "timestamp", "actual_denoised",
+                               "predicted", "actual_raw"]]
+            roll_df = roll_df.sort_values("timestamp").reset_index(drop=True)
+            extras[name] = {
+                "all_df": dense[["origin", "timestamp", "horizon", "actual",
+                                 "predicted", "persistence",
+                                 "actual_raw"]].reset_index(drop=True),
+                "roll_df": roll_df,
+                "per_horizon": pd.DataFrame(entry["per_horizon"]),
+                "per_horizon_den": pd.DataFrame(entry["per_horizon_den"]),
+            }
+        ratios = {"train_ratio": run["train_ratio"] or 0.75,
+                  "val_ratio": run["val_ratio"] or 0.0,
+                  "denoise_level": run["denoise_level"]}
+    finally:
+        conn.close()
+    return results, extras, ratios
+
+
+def _fmt_ts_short(value) -> str:
+    return str(value).replace("T", " ")[:19]
+
+
 def main():
-    global MODELS_DIR, OUT_DIR, IMG_DIR, EVAL_CACHE
+    global MODELS_DIR, OUT_DIR, IMG_DIR, EVAL_CACHE, SPLIT_RATIOS
+    global DENOISE_LEVEL, TRIM_BOUNDARY
     parser = argparse.ArgumentParser(description="Relatório de resultados (HTML).")
     parser.add_argument("--models-dir", type=Path, default=None,
                         help="base dos modelos treinados (default: pipeline/tmp/trained_compare)")
@@ -2541,7 +2749,35 @@ def main():
     parser.add_argument("--loss-ab-dir", type=Path, default=None,
                         help="diretorio com variantes de loss (mesmo protocolo) para "
                              "o painel A/B do DM — ex.: pipeline/tmp/trained_8020_mseloss")
+    parser.add_argument("--from-db", metavar="RUN", default=None,
+                        help="recarrega metricas/predicoes de uma run do banco "
+                             "(id ou report_id, ex.: lidar/8020) em vez de "
+                             "reavaliar os pesos na GPU")
+    parser.add_argument("--no-db", action="store_true",
+                        help="nao gravar a run avaliada no banco SQLite")
+    parser.add_argument("--trim-boundary-origins", type=int, default=0,
+                        help="descarta as primeiras N origens do teste "
+                             "(cuja janela de entrada cruza a fronteira "
+                             "treino/teste) de TODOS os metodos; default 0")
+    parser.add_argument("--keep-prior", action="store_true",
+                        help="nao substituir a run anterior do mesmo report_id")
+    parser.add_argument("--report", default=None,
+                        help="report_id no hub (ex.: lidar/8020); "
+                             "default: derivado de --out-dir/--models-dir")
+    parser.add_argument("--run-category", default=None,
+                        help="categoria da run no banco (ex.: 'lidar 8020'); "
+                             "default: derivada do report_id, senao 'avulsa'")
+    parser.add_argument("--run-title", default=None,
+                        help="titulo da run no banco (default: pasta de saida)")
+    parser.add_argument("--run-description", default=None,
+                        help="descricao livre da run no banco")
     args = parser.parse_args()
+
+    TRIM_BOUNDARY = int(args.trim_boundary_origins)
+    if TRIM_BOUNDARY > 0:
+        print(f"Protocolo: descartando as primeiras {TRIM_BOUNDARY} origens "
+              "do teste (janela de entrada cruza a fronteira treino/teste) "
+              "para todos os metodos.")
 
     if args.models_dir:
         MODELS_DIR = PROJECT_ROOT / args.models_dir
@@ -2552,11 +2788,33 @@ def main():
 
     IMG_DIR.mkdir(parents=True, exist_ok=True)
 
-    dataset = common.load_dataset(DATA_FILE,
-                                  keep_raw=("ws40", "ws100", "v40"))
+    # runs com conjunto de atributos estendido declaram "feature_keep" no
+    # model.json; o dataset precisa das mesmas colunas na avaliação
+    feature_keep = {"ws40", "ws100", "v40"}
+    models_dir = Path(args.models_dir) if args.models_dir else MODELS_DIR
+    for mj in sorted(Path(models_dir).glob("*/model.json")):
+        try:
+            feature_keep |= set(json.load(
+                open(mj, encoding="utf-8")).get("feature_keep", ()))
+        except (OSError, json.JSONDecodeError):
+            continue
+    dataset = common.load_dataset(DATA_FILE, keep_raw=tuple(sorted(feature_keep)))
     print(f"Dataset: {len(dataset)} linhas | {dataset.index.min()} a {dataset.index.max()}")
 
-    results, extras = evaluate_models(dataset)
+    denoise_level = 2
+    if args.from_db:
+        results, extras, ratios = run_from_database(args.from_db, dataset)
+        SPLIT_RATIOS = ratios
+        denoise_level = int(ratios.get("denoise_level") or 2)
+        DENOISE_LEVEL = denoise_level
+    else:
+        denoise_meta = load_metadata()[0]["meta"]
+        denoise_level = int(denoise_meta.get("denoise_level", 2))
+        results, extras = evaluate_models(dataset)
+
+    if not args.no_db and not args.from_db:
+        record_run(results, extras, args, models_dir, dataset, denoise_level)
+
     if EVAL_CACHE:
         common.write_json(EVAL_CACHE, {k: {kk: vv for kk, vv in v.items()
                                            if kk not in ("hp", "training")}
@@ -2567,12 +2825,19 @@ def main():
     if baselines:
         print("Baselines estatísticos carregados: ARIMA, Random Forest, Persistência")
 
+    base_preds = load_baseline_predictions()
+    if TRIM_BOUNDARY > 0 and base_preds is not None:
+        base_preds = trim_boundary_origins(base_preds, TRIM_BOUNDARY,
+                                           "baselines")
+        if baselines:
+            baselines = recompute_baseline_metrics(base_preds,
+                                                   baselines["metrics"])
+
     plot_split_timeline(dataset, recs)
     plot_comparison_bars(recs, baselines)
     plot_error_summary(recs, extras, baselines)
     plot_skill(recs, baselines)
     plot_radar(recs, baselines)
-    base_preds = load_baseline_predictions()
     plot_per_horizon(recs, extras, baselines)
     plot_horizon_heatmap(recs, extras, baselines)
     plot_horizon_r2_heatmap(recs, extras, baselines)
@@ -2631,7 +2896,8 @@ def main():
 
     print(f"Figuras salvas em: {IMG_DIR}")
     print(f"Métricas salvas em: {OUT_DIR / 'evaluation.json'}")
-    print("Relatório curado: reports/lidar/ (rebuild do hub para atualizar)")
+    print("Relatório curado: reports/lidar/ (rebuild do hub para atualizar; "
+          "a página lê do banco de runs antes do evaluation.json)")
 
 
 if __name__ == "__main__":

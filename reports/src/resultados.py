@@ -1,8 +1,10 @@
 """Renderizador padrao dos relatorios de resultados LiDAR.
 
-Converte um diretorio de saida do protocolo antigo (data/results/report_*/:
-evaluation.json + images/) em uma pagina padronizada do hub, com tabelas e
-figuras exportaveis para LaTeX (steam/sbsr/generic).
+Converte a run do banco de predições (data/predictions.db, resolvida por
+report_id) ou, na falta dela, o diretorio de saida do protocolo antigo
+(data/results/report_*/: evaluation.json + images/) em uma pagina
+padronizada do hub, com tabelas e figuras exportaveis para LaTeX
+(steam/sbsr/generic).
 
 Usado pelos report.py em reports/lidar/<experimento>/.
 """
@@ -11,6 +13,7 @@ from __future__ import annotations
 
 import json
 import shutil
+import sqlite3
 import sys
 from pathlib import Path
 
@@ -256,13 +259,45 @@ def _mcs_section(src: Path) -> str:
         sec_id="mcs")
 
 
+def _run_from_db(report_key: str):
+    """Run canônica do banco de predições para este relatório.
+
+    Retorna (run_row, results_dict) ou (None, None) quando o banco não
+    existe / não tem run para o ``report_id`` (ex.: ``lidar/8020``).
+    """
+    if not report_key:
+        return None, None
+    from src import predictions_db
+
+    try:
+        conn = predictions_db.connect(read_only=True)
+    except (FileNotFoundError, sqlite3.Error):
+        return None, None
+    try:
+        run = predictions_db.run_by_report(conn, report_key)
+        if run is None:
+            return None, None
+        return run, predictions_db.results_dict(conn, run["id"])
+    finally:
+        conn.close()
+
+
 def build_report(ctx, *, source_dir: str, title: str, subtitle: str = "",
                  badges=(), protocol_note: str = "") -> str:
-    """Gera o corpo HTML padronizado do relatorio de resultados."""
+    """Gera o corpo HTML padronizado do relatorio de resultados.
+
+    A fonte primária é o banco de runs (data/predictions.db, resolvido por
+    ``<categoria>/<nome>``); sem run gravada, cai para o evaluation.json da
+    pasta fonte (compatibilidade com rodadas antigas).
+    """
     src = PROJECT_ROOT / source_dir
+    report_key = f"{ctx.category}/{ctx.name}"
+    run_row, db_data = _run_from_db(report_key)
     evaluation_path = src / "evaluation.json"
-    if not evaluation_path.is_file():
-        return (f'<section><h2>Sem dados</h2><p><code>{C.esc(source_dir)}/'
+    if db_data is None and not evaluation_path.is_file():
+        return (f'<section><h2>Sem dados</h2><p>Nenhuma run de '
+                f'<code>{C.esc(report_key)}</code> no banco '
+                f'(<code>data/predictions.db</code>) e <code>{C.esc(source_dir)}/'
                 f'evaluation.json</code> não encontrado. Use o botão '
                 f'<strong>Regenerar</strong> (servidor ativo) ou rode '
                 f'<code>tests/relatorio_resultados.py</code>.</p></section>')
@@ -275,15 +310,20 @@ def build_report(ctx, *, source_dir: str, title: str, subtitle: str = "",
             shutil.rmtree(local_figs)
         shutil.copytree(src / "images", local_figs)
 
-    data = json.loads(evaluation_path.read_text(encoding="utf-8"))
+    data = db_data if db_data is not None \
+        else json.loads(evaluation_path.read_text(encoding="utf-8"))
     models = sorted(data.values(), key=lambda m: m.get("all", {})
                     .get("mse", 9e9))
 
     # ---- cards
     best = models[0]
     total_params = sum(m.get("params", 0) for m in models)
+    extra_badges = [source_dir]
+    if run_row is not None:
+        extra_badges.append(
+            f"banco: run #{run_row['id']} · {run_row['category']}")
     parts = [C.page_header(
-        title, subtitle, badges=list(badges) + [source_dir]),
+        title, subtitle, badges=list(badges) + extra_badges),
         C.cards([
             (len(models), "modelos seq2seq"),
             (f"{best.get('short', '?')} · {_fmt(best['all']['mse'])}",
@@ -297,6 +337,21 @@ def build_report(ctx, *, source_dir: str, title: str, subtitle: str = "",
 
     if protocol_note:
         parts.append(C.note(protocol_note))
+    if run_row is not None:
+        generator = (run_row["source_file"] or run_row["source"] or "—")
+        repro = (f"Modelos: <code>{run_row['models_dir'] or '—'}</code> · "
+                 f"gerador: <code>{generator}</code>"
+                 + (f" · saída: <code>{run_row['out_file']}</code>"
+                    if run_row["out_file"] else ""))
+        if run_row["source_cmd"]:
+            repro += (f'<div style="font-size:11px;word-break:break-all">'
+                      f"<code>{run_row['source_cmd']}</code></div>")
+        parts.append(C.note(
+            f"Fonte de dados: <code>data/predictions.db</code> — run "
+            f"<strong>#{run_row['id']}</strong> ({run_row['category']}), "
+            f"criada em {str(run_row['created_at']).replace('T', ' ')[:19]}. "
+            f"Métricas de <code>run_model_stath</code>; predições linha a "
+            f"linha em <code>run_model_prediction</code>.<br>{repro}"))
 
     # ---- síntese da análise
     parts.append(C.section(

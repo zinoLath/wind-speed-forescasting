@@ -78,13 +78,16 @@ def forecast_redundant_columns(columns, keep=()):
 
     Covers metadata columns, the shear indicators (``cis*``), the dispersion
     families and every ws/v/dir column outside the canonical heights.
+    Names listed in ``keep`` survive (feature-set runs) — including the
+    otherwise unconditional ``cis*`` and metadata drops.
     """
     keep = set(keep)
-    drop = set(METADATA_COLUMNS)
+    drop = set(METADATA_COLUMNS) - keep
     for col in columns:
         name = str(col)
         if name.startswith("cis"):
-            drop.add(name)
+            if name not in keep:
+                drop.add(name)
             continue
         match = re.match(r"^(ws|v|dir|disp|vdisp)(\d+)$", name)
         if not match:

@@ -28,6 +28,8 @@ import json
 import sys
 from pathlib import Path
 
+import pandas as pd
+
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
@@ -145,8 +147,12 @@ def build_tables(args) -> str:
         h36_rows.append((display_name(entry.get("short", name)), h))
 
     if not args.no_baselines:
+        base = None
         if BASELINES_JSON.is_file():
             base = json.loads(BASELINES_JSON.read_text(encoding="utf-8"))
+        if getattr(args, "trim_boundary_origins", 0):
+            base = trimmed_baseline_metrics(base, args.trim_boundary_origins)
+        if base:
             for key in BASELINE_KEYS:
                 blk = base.get(key)
                 if not blk:
@@ -180,8 +186,49 @@ def build_tables(args) -> str:
     header = (f"% Gerado por scripts/sbsr_tables.py em "
               f"{datetime.date.today().isoformat()} — rodada: "
               f"{round_dir.resolve().relative_to(PROJECT_ROOT)}/evaluation.json"
-              + ("" if args.no_baselines else " + baselines (arima_rf/metrics.json)"))
+              + ("" if args.no_baselines else " + baselines (arima_rf/metrics.json")
+              + (f"; -{args.trim_boundary_origins} origens de fronteira)"
+                 if getattr(args, "trim_boundary_origins", 0) else
+                 (")" if not args.no_baselines else "")))
     return "\n\n".join([header, table_all, table_h36]) + "\n"
+
+
+def trimmed_baseline_metrics(base: dict | None, n: int) -> dict:
+    """Baselines recomputados na grade sem as primeiras *n* origens.
+
+    Espelha o corte de ``tests/relatorio_resultados.py``: descarta as
+    primeiras *n* origens do ``predictions_long.csv`` (janela de entrada
+    cruza a fronteira treino/teste) e recalcula as métricas para todos os
+    métodos ficarem na mesma grade.
+    """
+    csv_path = BASELINES_JSON.parent / "predictions_long.csv"
+    if not csv_path.is_file():
+        sys.exit(f"predictions_long.csv ausente ({csv_path}); impossível "
+                 "aplicar --trim-boundary-origins")
+    df = pd.read_csv(csv_path, parse_dates=["origin", "timestamp"])
+    for col in ("origin", "timestamp"):
+        df[col] = df[col].dt.round("min")
+    origins = sorted(df["origin"].unique())
+    if len(origins) <= n:
+        sys.exit(f"grade tem {len(origins)} origens <= n={n}")
+    cut = origins[n - 1]
+    df = df[df["origin"] > cut]
+    print(f"[trim-boundary] baselines: {len(origins)} -> "
+          f"{df['origin'].nunique()} origens (descartadas as primeiras "
+          f"{n}, ate {cut})")
+    out = json.loads(json.dumps(base)) if base else {}
+    for key in BASELINE_KEYS:
+        if key not in df.columns:
+            continue
+        m_all = common.compute_metrics(df["actual"], df[key])
+        h_max = int(df["horizon"].max())
+        roll = df[df["horizon"] == h_max]
+        m_roll = common.compute_metrics(roll["actual"], roll[key])
+        blk = out.get(key, {})
+        blk["all_horizons"] = m_all
+        blk["rolling"] = m_roll
+        out[key] = blk
+    return out
 
 
 def models_dir_for(round_dir: Path) -> Path:
@@ -200,6 +247,10 @@ def main() -> None:
                     help="vírgula é o padrão dos templates sbsr/steam")
     ap.add_argument("--nd", type=int, default=3, help="casas decimais (default: 3)")
     ap.add_argument("--no-baselines", action="store_true")
+    ap.add_argument("--trim-boundary-origins", type=int, default=0,
+                    help="descarta as primeiras N origens do teste e "
+                         "recomputa os baselines na grade cortada "
+                         "(espelha tests/relatorio_resultados.py)")
     ap.add_argument("--placement", default="h")
     ap.add_argument("--label-all", default=DEFAULTS["all"]["label"])
     ap.add_argument("--caption-all", default=DEFAULTS["all"]["caption"])

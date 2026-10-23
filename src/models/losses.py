@@ -72,8 +72,14 @@ def _norm_xcorr(a, b):
 def itilde_q(output_steps, alpha=0.3, beta=0.5, gamma=0.1):
     """Keras loss ITILDE-Q: L_MSE + α·(β·L_a.shift + (1−β)·L_phase + γ·L_amp).
 
-    α, β, γ são hiperparâmetros (defaults escolhidos aqui; sem valores
-    oficiais nos textos disponíveis — podem ser adicionados ao Optuna).
+    α, β, γ são hiperparâmetros. Valores nos textos:
+    - Lee et al. 2022 (TILDE-Q, arXiv:2210.15050, Eq. 8): a mistura
+      shift/fase (aqui β) = 0,5 e γ = 0,01 (γ é termo de "calibração";
+      o paper recomenda γ pequeno).
+    - Dong Sheng et al. 2026 (ITILDE-Q, Eq. 15; convenção usada aqui):
+      α = 0,5, β = 0,5, γ = 0,5.
+    Os defaults do repo (0,3/0,5/0,1) não são de nenhum dos dois; busca
+    empírica em scripts/itildeq_terms_kaggle.py.
 
     Observação: a perda NÃO zera para predição perfeita — o termo de fase
     penaliza a energia nas frequências não-dominantes (‖F(ŷ)‖), que é a
