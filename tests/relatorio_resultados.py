@@ -1274,8 +1274,10 @@ def plot_dm_matrix(dmx):
         stars = ""
         if np.isfinite(p):
             if p < 0.01:
+                stars = "***"
+            elif p < 0.05:
                 stars = "**"
-            elif p < dmx["alpha"]:
+            elif p < 0.10:
                 stars = "*"
         return f"{m['dm'][i, j]:+.1f}{stars}"
 
@@ -1283,7 +1285,7 @@ def plot_dm_matrix(dmx):
         dmx, "dm", "RdBu_r", -vmax, vmax,
         "DM corrigido (t) — positivo: modelo da linha tem perda maior (pior)",
         "Teste de Diebold–Mariano por horizonte "
-        f"(* p < {dmx['alpha']:.2f}; ** p < 0,01)",
+        "(* p < 0,10; ** p < 0,05; *** p < 0,01)",
         "16_significancia_dm.png", cell_text,
     )
 
