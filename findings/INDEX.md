@@ -17,22 +17,25 @@
 ### dados
 
 - [dados-map](knowledge/dados-map.md) — mapa completo de entradas/saídas/artefatos (`data/`, `pipeline/tmp/`, report*/), regras de gitignore e rastreabilidade `model.json`.
+- [predicoes-db](knowledge/predicoes-db.md) — banco SQLite `data/predictions.db` (runs/modelos/hp/features/stath/predições linha a linha); relatórios do hub leem daqui primeiro; `--from-db` regenera sem GPU; CLI `python -m src.predictions_db`.
 
 ### protocolo
 
 - [protocolo-avaliacao](knowledge/protocolo-avaliacao.md) — protocolos: pipeline 75/20/5 com validação vs LiDAR 80/20 sem validação (60 épocas, seed 42); métricas vs ws100 bruto; rolling sem vazamento.
 - [variancia-implicita](knowledge/variancia-implicita.md) — diagnóstico de consistência Var(y) = MSE/(1−R²): mesma tabela ⇒ variância implícita única; provou origens diferentes (2,702 × 2,779) na Tabela 1 do SBSR; critério de pronto da sbsr-integrate.
+- [validacao-cruzada-series-curtas](knowledge/validacao-cruzada-series-curtas.md) — 53 dias cobrem ~53 ciclos diurnos; k-fold aleatório inviável por sobreposição (purge ≥ 108 passos ⇒ ~70 blocos independentes); precedente TSCV com gap em 8.640 pontos (Bergmeir 2018); limitação real = escalas > diária.
 - [wavelet-denoise](knowledge/wavelet-denoise.md) — alvo `ws100_wavelet` = sym18 nível 2, VisuShrink soft-threshold; escolha validada por A/B (`docs/ab_target_denoise.md`).
 
 ### resultados
 
 - [resultados-canonicos](knowledge/resultados-canonicos.md) — números de referência: report_8020 (TCN R² 0.514), report_homologado (antigo, alimenta steam/paper), tabelas do artigo SBR desatualizadas, métricas históricas inválidas (MAE 0.1589).
-- [estudos-ablacoes](knowledge/estudos-ablacoes.md) — mapa de evidências: A/B alvo, ablações de loss, HPO dedicado, seeds, gate/persistência, dilatações TCN, features study, WFO.
+- [estudos-ablacoes](knowledge/estudos-ablacoes.md) — mapa de evidências: A/B alvo, ablações de loss, HPO dedicado, seeds, gate/persistência, dilatações TCN, features study, WFO, featurex (67 canais/MSE), ablação de alturas, wd sweep, CV purgada, MCS por horizonte, piso de ruído.
 
 ### metodos
 
 - [imputacao](knowledge/imputacao.md) — RF/LightGBM (IterativeImputer, 3k linhas), KNN, Kalman; sin/cos de direção; validação por injeção de lacunas; flag `imputed`; linha WFO LightGBM.
 - [optuna-hpo](knowledge/optuna-hpo.md) — TPE multivariado+group, MedianPruner, objetivo RMSE com decoder inferência, sqlite retomável; rodadas distribuídas round2+ (Colab/Kaggle/local).
+- [predicoes-diagnostico](knowledge/predicoes-diagnostico.md) — painel de comportamento das predições (DTW/forma, suavidade HF, autocorrelação, viés, encolhimento de amplitude): todos suavizam ~10×, ITILDE-Q empata em DTW com MSE; script `prediction_diagnostics.py`.
 - [metodos-complementares](knowledge/metodos-complementares.md) — baselines ARIMA/RF/persistência; DM/KSPA com bootstrap, loss_ab, breakpoints, estratos regime/banda; persistence gate A/B.
 
 ### relatorios
@@ -45,6 +48,8 @@
 - [tabelas-sbsr-geradas](knowledge/tabelas-sbsr-geradas.md) — `scripts/sbsr_tables.py`: tabelas LaTeX prontas (caption+label) de uma rodada + baselines; semântica all/h36 validada; per_horizon persistido no evaluation.json.
 - [artigo-steam-knowledge](knowledge/artigo-steam-knowledge.md) — steam (classe imc/UNIFEI, sem .git, figures do homologado) + knowledge (catálogo bibtex com abstract, gerador `knowledge.py`, index/bib GERADOS).
 - [overleaf-sync](knowledge/overleaf-sync.md) — paper_sync + articles_sync, sync.json só de figuras, hook post-commit = ponto de push, credenciais/best-effort.
+- [seeds-literatura](knowledge/seeds-literatura.md) — mapeamento de seeds na base: minoria recente usa N seeds (5/10/30) + mean±std + teste sobre os N valores (pareado com seeds compartilhadas: bendes2026bio, SeqBinder); maioria = 1 run sem menção; testes DM/Friedman sobre tempo não replicam seed.
+- [rodada-final-sbsr](knowledge/rodada-final-sbsr.md) — decisões do paper: MSE pura em todos os wrappers (ITILDE-Q descartada), narrativa ARIMA/TCN redigida pelo autor, último treino → `reports/lidar/8020-sbsr`; checklist do grill-me de unificação.
 
 ### infra
 

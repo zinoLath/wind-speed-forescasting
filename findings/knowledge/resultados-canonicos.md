@@ -1,7 +1,7 @@
 ---
 title: Resultados canônicos das rodadas
 area: resultados
-updated: 2026-10-20
+updated: 2026-10-22
 ---
 
 # Resultados canônicos das rodadas
@@ -30,6 +30,18 @@ origens, var implícita única). Números da execução anterior (16/10):
   data/results/report_8020_itildeq`.
 - Figuras do artigo: `articles/sbr/sync.json` já aponta para
   `data/results/report_8020_itildeq/images/`.
+
+## report_8020_featurex (rodada de ESTUDO — 67 canais, MSE puro — 21/10/2026)
+
+Avaliação completa (rolling + filtro de observadas, mesma grade dos
+baselines, `data/results/report_8020_featurex/evaluation.json`):
+TCN **0,494** / LSTM **0,485** / TCN-Bi 0,401 / LSTM-Bi 0,379 — vs
+ARIMA 0,508 / RF 0,418 / Pers 0,388. DM 10 pares 0 significativos;
+MCS α=0,10 só a TCN. **NÃO canônica** (não promoveu) — análise no
+relatório `reports/lidar/8020-featurex`. Lineup híbrido
+(`report_8020_hybrid`: TCN/TCN-Bi canônicas + LSTMs featurex): MSE TCN
+1,301 < ARIMA 1,329 < TCN-Bi 1,379 < LSTM 1,393; DM 0 significativos,
+MCS manteve todos os 7.
 
 ## report_8020 (rodada ponderada — ANTERIOR, mantida como ablação)
 

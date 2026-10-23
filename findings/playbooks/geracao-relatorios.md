@@ -1,7 +1,7 @@
 ---
 title: Gerar/regenerar relatórios do hub
 area: playbook
-updated: 2026-10-19
+updated: 2026-10-22
 ---
 
 # Playbook: geração de relatórios
@@ -14,6 +14,24 @@ Fonte: skill **reports-hub**. Resumo operacional:
 python tests/relatorio_resultados.py --models-dir pipeline/tmp/trained_8020 \
     --out-dir data/results/report_8020 --no-baselines
 ```
+
+A avaliação **sempre grava a run no banco** `data/predictions.db`
+(finding `predicoes-db`) — métricas, hp, features, stats por horizonte e
+as predições linha a linha, substituindo a run anterior do mesmo
+`report_id`. `--no-db` é só para depuração (nunca em runbook). Os
+relatórios do hub leem do banco antes do `evaluation.json`.
+
+## Regenerar figuras SEM GPU (a partir do banco)
+
+```bash
+python tests/relatorio_resultados.py --from-db lidar/8020 \
+    --out-dir data/results/report_8020 --no-baselines
+```
+
+Reprocessa figuras/DM/MCS/evaluation.json a partir das predições gravadas
+(métricas idênticas à avaliação GPU; diagramas `15_arquitetura_*` e
+`16_wavelet_vs_real` persistem na pasta `images/` da fonte). Para regravar
+a run (nova inferência), rode a avaliação GPU normal.
 
 ## Reconstruir o site (sempre após mudar qualquer relatório)
 

@@ -30,6 +30,28 @@ Consolidado de `agents/gotchas.md` — os pontos que já quebraram algo antes:
 - **Métricas históricas** (MAE 0.1589): protocolo antigo com vazamento —
   números honestos em `reports/` e `docs/`.
 
+## Janela de avaliação: nunca incluir a validação no "teste"
+
+Em protocolos com split 72/8/20, a avaliação final tem de começar **depois
+de train+val**. Avaliar a partir do fim do treino (incluindo o bloco de
+validação) infla o R² — caso real (coeficientes ITILDE-Q, 21/10):
+0,4597 (val+teste) → **0,2765** (teste puro), pois a validação tinha sido
+usada para selecionar a config e tinha outra variância. Regra: corte =
+`len(train)+len(val)`; contexto do encoder pode vir do fim da val.
+
+## Kaggle TPU: acelerador nem sempre é anexado
+
+`enable_tpu: true` no kernel-metadata é aceito pela CLI (kaggle 1.7.4.5)
+e preservado pelo servidor, mas **não garante TPU**: sem acesso/quota de
+TPU na conta o runtime cai na imagem padrão (CPU) — sinais: `TPU_NAME`
+vazio e `TPUs not found in the cluster / No OpKernel ... ConfigureDistributedTPU`.
+O smoke `itildeq-tpu-smoke` (21/10) rodou em CPU (3 épocas×1500 amostras
+= 23 s). Templates TPU: `scripts/kaggle_tpu_push.py` (sem
+tensorflow[and-cuda]; usa libtpu da VM) + `scripts/tpu_smoke_test.py`.
+TPU no Kaggle exige verificação por telefone; quota é semanal e separada
+da GPU. FFT (`tf.signal.rfft`, termo de fase da ITILDE-Q) não roda em
+TPU — perdas com FFT ficam fora.
+
 ## Kaggle: corrida de versionamento do dataset
 
 Kernels restauram a **última versão processada** do Dataset no momento em

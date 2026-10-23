@@ -1,7 +1,7 @@
 ---
 title: Protocolo de avaliação (80/20, métricas, rolling)
 area: protocolo
-updated: 2026-10-19
+updated: 2026-10-21
 ---
 
 # Protocolo de avaliação
@@ -34,6 +34,17 @@ interna 80/20).
 - Resultados **variam entre execuções** (sem early stopping): diferenças de
   ±0.3 MSE não são regressão; comparar com a rodada anterior e comentar
   variância.
+
+## HPO e vazamento
+
+Otimizar hiperparâmetros **contra o teste** é vazamento de seleção: o
+conjunto de teste influencia a escolha do modelo, e o melhor de N trials
+fica otimista pelo máximo do ruído (viés de seleção) — o número deixa de
+ser estimativa honesta. Regra: objetivo/pruning **só** na validação
+(holdout do treino ou split temporal dedicado); teste intocado até a
+avaliação final. HPO em 80/20 sem validação exige segurar uma fatia do
+treino para objetivo. Exceção consciente: estudo exploratório (ex.:
+round6), explicitamente não reportável.
 
 ## Fontes
 

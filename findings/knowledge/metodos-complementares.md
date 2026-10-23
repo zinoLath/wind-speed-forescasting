@@ -1,7 +1,7 @@
 ---
 title: Métodos complementares e testes estatísticos
 area: metodos
-updated: 2026-10-19
+updated: 2026-10-22
 ---
 
 # Métodos complementares e testes estatísticos
@@ -26,6 +26,10 @@ learning.
   configs `pipeline.train_compare_*`).
 - Relatórios LiDAR usam `mcs.json` (model confidence set) gerado junto do
   `evaluation.json`.
+- **Bateria seeds + Friedman + KSPA**: `tests/seeds_significance_8020.py`
+  → `data/results/itildeq_seeds_8020/significance/` (Wilcoxon pareado por
+  seed n=10, Friedman por dia com pós-hoc Holm entre as 4 canônicas do
+  predictions.db, KSPA com bootstrap em blocos de origens). Sem GPU.
 
 ## Fontes
 
