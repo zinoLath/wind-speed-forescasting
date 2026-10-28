@@ -1,0 +1,390 @@
+{
+  "common": {
+    "seed": 42,
+    "input_steps": 72,
+    "output_steps": 36,
+    "target_col": "ws100_wavelet",
+    "denoise": [
+      "ws100"
+    ],
+    "denoise_level": 2,
+    "batch_size": 32,
+    "loss": "mse",
+    "patience": 12,
+    "train_ratio": 0.72,
+    "val_ratio": 0.08,
+    "params_source": "optuna",
+    "decoder_mode": "direct",
+    "persistence_gate": false,
+    "hyperparameters": {}
+  },
+  "optuna": {
+    "enabled": true,
+    "wrappers": [
+      "lstm",
+      "lstm_bi",
+      "tcn",
+      "tcn_bi"
+    ],
+    "n_trials": 100,
+    "epochs": 60,
+    "timeout_sec": null,
+    "pruning": true,
+    "storage_subdir": "optuna_round8",
+    "study_name": "round8",
+    "xla": true,
+    "pruner": {
+      "type": "successive_halving",
+      "min_resource": 12,
+      "reduction_factor": 3
+    },
+    "pruning_metric": "objective",
+    "pruning_report_epochs": [
+      12,
+      36
+    ],
+    "sampler_n_startup_trials": 30,
+    "sampler_constant_liar": false,
+    "loss_by_wrapper": {
+      "lstm": "mse",
+      "lstm_bi": "mse",
+      "tcn": "mse",
+      "tcn_bi": "mse"
+    },
+    "static_dilations": {
+      "encoder": [
+        1,
+        2,
+        4,
+        8,
+        16,
+        32,
+        36
+      ],
+      "decoder": [
+        1,
+        2,
+        4,
+        8,
+        16
+      ],
+      "encoder_depth": [
+        4,
+        7
+      ],
+      "decoder_depth": [
+        3,
+        5
+      ]
+    },
+    "objective": {
+      "type": "block_mse",
+      "val_blocks": 8,
+      "cache": "data/results/optuna_round7/arima_val_cache.csv"
+    },
+    "keep_raw_by_wrapper": {
+      "lstm": [
+        "humid",
+        "temp",
+        "cis1",
+        "cis2",
+        "cis3",
+        "cis4",
+        "cis5",
+        "cis6",
+        "cis7",
+        "cis8",
+        "cis9",
+        "cis10",
+        "cis11",
+        "cis12",
+        "cis13",
+        "cis14",
+        "cis15",
+        "cis16",
+        "cis17",
+        "cis18",
+        "cis19"
+      ],
+      "lstm_bi": [
+        "humid",
+        "temp",
+        "cis1",
+        "cis2",
+        "cis3",
+        "cis4",
+        "cis5",
+        "cis6",
+        "cis7",
+        "cis8",
+        "cis9",
+        "cis10",
+        "cis11",
+        "cis12",
+        "cis13",
+        "cis14",
+        "cis15",
+        "cis16",
+        "cis17",
+        "cis18",
+        "cis19"
+      ],
+      "tcn": [
+        "humid",
+        "temp"
+      ],
+      "tcn_bi": [
+        "humid",
+        "temp"
+      ]
+    },
+    "batch_size_by_wrapper": {
+      "lstm": 64,
+      "lstm_bi": 32,
+      "tcn": 32,
+      "tcn_bi": 32
+    },
+    "space_override": {
+      "lstm": {
+        "learning_rate": {
+          "range": [
+            0.001,
+            0.015
+          ],
+          "log": true
+        },
+        "weight_decay": {
+          "fix": 0.0001
+        },
+        "lstm_units": {
+          "choices": [
+            96,
+            128,
+            160,
+            192,
+            224,
+            256
+          ]
+        },
+        "encoder_dropout_rate": {
+          "range": [
+            0.05,
+            0.35
+          ]
+        },
+        "decoder_dropout_rate": {
+          "range": [
+            0.05,
+            0.35
+          ]
+        }
+      },
+      "lstm_bi": {
+        "learning_rate": {
+          "range": [
+            0.0005,
+            0.008
+          ],
+          "log": true
+        },
+        "weight_decay": {
+          "fix": 0.0001
+        },
+        "lstm_units": {
+          "choices": [
+            96,
+            128,
+            160,
+            192,
+            224,
+            256
+          ]
+        },
+        "encoder_dropout_rate": {
+          "range": [
+            0.05,
+            0.35
+          ]
+        },
+        "decoder_dropout_rate": {
+          "range": [
+            0.05,
+            0.35
+          ]
+        }
+      },
+      "tcn": {
+        "learning_rate": {
+          "range": [
+            0.001,
+            0.015
+          ],
+          "log": true
+        },
+        "weight_decay": {
+          "fix": 0.0001
+        },
+        "filters": {
+          "range": [
+            48,
+            208
+          ],
+          "step": 16
+        },
+        "encoder_dropout_rate": {
+          "range": [
+            0.05,
+            0.35
+          ],
+          "step": 0.05
+        },
+        "decoder_dropout_rate": {
+          "range": [
+            0.05,
+            0.35
+          ],
+          "step": 0.05
+        }
+      },
+      "tcn_bi": {
+        "learning_rate": {
+          "range": [
+            0.0003,
+            0.003
+          ],
+          "log": true
+        },
+        "weight_decay": {
+          "fix": 0.0001
+        },
+        "filters": {
+          "range": [
+            48,
+            208
+          ],
+          "step": 16
+        },
+        "encoder_dropout_rate": {
+          "range": [
+            0.05,
+            0.35
+          ],
+          "step": 0.05
+        },
+        "decoder_dropout_rate": {
+          "range": [
+            0.05,
+            0.35
+          ],
+          "step": 0.05
+        }
+      }
+    },
+    "enqueue_params_by_wrapper": {
+      "lstm": [
+        {
+          "learning_rate": 0.011097334529875765,
+          "weight_decay": 0.0001,
+          "lstm_units": 192,
+          "encoder_dropout_rate": 0.2747386059668431,
+          "decoder_dropout_rate": 0.24695063488183566
+        },
+        {
+          "learning_rate": 0.003,
+          "weight_decay": 0.0001,
+          "lstm_units": 128,
+          "encoder_dropout_rate": 0.15,
+          "decoder_dropout_rate": 0.15
+        }
+      ],
+      "lstm_bi": [
+        {
+          "learning_rate": 0.0033955782885022245,
+          "weight_decay": 0.0001,
+          "lstm_units": 256,
+          "encoder_dropout_rate": 0.08270413878177926,
+          "decoder_dropout_rate": 0.314775616277522
+        },
+        {
+          "learning_rate": 0.001,
+          "weight_decay": 0.0001,
+          "lstm_units": 128,
+          "encoder_dropout_rate": 0.15,
+          "decoder_dropout_rate": 0.2
+        }
+      ],
+      "tcn": [
+        {
+          "learning_rate": 0.009718155222158475,
+          "weight_decay": 0.0001,
+          "filters": 48,
+          "encoder_kernel_size": 2,
+          "encoder_nb_stacks": 1,
+          "encoder_dropout_rate": 0.30000000000000004,
+          "encoder_dil_depth": 7,
+          "decoder_kernel_size": 2,
+          "decoder_nb_stacks": 1,
+          "decoder_dropout_rate": 0.25,
+          "decoder_dil_depth": 5
+        },
+        {
+          "learning_rate": 0.002,
+          "weight_decay": 0.0001,
+          "filters": 96,
+          "encoder_kernel_size": 2,
+          "encoder_nb_stacks": 1,
+          "encoder_dropout_rate": 0.15,
+          "encoder_dil_depth": 6,
+          "decoder_kernel_size": 2,
+          "decoder_nb_stacks": 1,
+          "decoder_dropout_rate": 0.15,
+          "decoder_dil_depth": 4
+        }
+      ],
+      "tcn_bi": [
+        {
+          "learning_rate": 0.000536226967690727,
+          "weight_decay": 0.0001,
+          "filters": 144,
+          "encoder_kernel_size": 2,
+          "encoder_nb_stacks": 1,
+          "encoder_dropout_rate": 0.15000000000000002,
+          "encoder_dil_depth": 7,
+          "decoder_kernel_size": 3,
+          "decoder_nb_stacks": 1,
+          "decoder_dropout_rate": 0.05,
+          "decoder_dil_depth": 5
+        },
+        {
+          "learning_rate": 0.001,
+          "weight_decay": 0.0001,
+          "filters": 96,
+          "encoder_kernel_size": 2,
+          "encoder_nb_stacks": 1,
+          "encoder_dropout_rate": 0.15,
+          "encoder_dil_depth": 6,
+          "decoder_kernel_size": 2,
+          "decoder_nb_stacks": 1,
+          "decoder_dropout_rate": 0.15,
+          "decoder_dil_depth": 4
+        }
+      ]
+    },
+    "assign": {
+      "colab": [],
+      "kaggle": [
+        [
+          "tcn"
+        ],
+        [
+          "tcn_bi"
+        ]
+      ],
+      "local": [
+        "lstm",
+        "lstm_bi"
+      ]
+    },
+    "final_protocol_callbacks": true
+  }
+}
