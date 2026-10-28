@@ -1,7 +1,7 @@
 # Processos metodológicos candidatos — varredura da base de conhecimento
 
 > **Status (14/10/2026):** implementados A1–A6 + B3/B4/B6/B8 em
-> `tests/metodos_complementares.py` → resultados em
+> `studies/metodos_complementares.py` → resultados em
 > `data/results/metodos_complementares/` · explicações e fontes em
 > `guia_metricas.ai.md` · sugestões de texto para o artigo como
 > comentários `%` em `03_Material_e_metodos.tex`. Pendentes de GPU:
@@ -33,7 +33,7 @@ Harvey–Leybourne–Newbold + estimador HAC, estatística ± EP e p-valor
 
 - **Por quê:** é o pedido explícito da Vanessa, e a forma "nua" do DM em
   rolling forecast autocoracionado é alvo fácil de crítica.
-- **Custo:** baixo — `tests/relatorio_resultados.py` já implementa o DM
+- **Custo:** baixo — `reports/src/relatorio_resultados.py` já implementa o DM
   (agregado + por horizonte, blocos por origem); falta reportar
   estatística/por-par e o ajuste de Harvey.
 - **Encaixe:** §Avaliação (1 frase de definição) + Resultados (tabela

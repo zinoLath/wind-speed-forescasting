@@ -8,8 +8,8 @@ nível 2 e loss ITILDE-Q (α=0,3, β=0,5, γ=0,1).
 
 Fontes:
     data/results/itildeq_seeds_8020/itildeq_seeds_8020.json + images/*.png
-Gerador: scripts/lidar_8020_itildeq_seeds_train.py (GPU/Kaggle) +
-         tests/itildeq_seeds_8020.py (análise, CPU).
+Gerador: scripts/experiments/lidar_8020_itildeq_seeds_train.py (GPU/Kaggle) +
+         studies/itildeq_seeds_8020.py (análise, CPU).
 
     .venv/bin/python reports/lidar/8020-itildeq-seeds/report.py
 """
@@ -108,8 +108,8 @@ def build(ctx):  # noqa: ARG001 (contrato do builder)
         return C.page_header(
             "ITILDE-Q nas LSTMs — estudo de seeds (80/20)",
             "Análise ainda não executada.") + C.note(
-            "Rode <code>scripts/lidar_8020_itildeq_seeds_train.py</code> e "
-            "<code>tests/itildeq_seeds_8020.py</code> (ou o botão "
+            "Rode <code>scripts/experiments/lidar_8020_itildeq_seeds_train.py</code> e "
+            "<code>studies/itildeq_seeds_8020.py</code> (ou o botão "
             "<b>Regenerar</b>).")
 
     d = json.loads(META_JSON.read_text(encoding="utf-8"))
@@ -119,7 +119,7 @@ def build(ctx):  # noqa: ARG001 (contrato do builder)
         return C.page_header(
             "ITILDE-Q nas LSTMs — estudo de seeds (80/20)",
             "Sem variantes no JSON.") + C.note(
-            "Rode <code>tests/itildeq_seeds_8020.py</code>.")
+            "Rode <code>studies/itildeq_seeds_8020.py</code>.")
 
     available = [w for w in WRAPPERS if w in variants]
     n_seeds = max(len(variants[w]["seeds"]) for w in available)
@@ -548,11 +548,11 @@ REPORT = {
     "description": "Várias seeds do TensorFlow com a mesma LSTM/LSTM-Bi e a "
                    "loss ITILDE-Q: distribuição do erro, ranking, melhor/pior "
                    "seed e estabilidade (bootstrap + Diebold–Mariano).",
-    "regenerate": [".venv/bin/python", "tests/itildeq_seeds_8020.py",
+    "regenerate": [".venv/bin/python", "studies/itildeq_seeds_8020.py",
                    "--models-dir", "pipeline/tmp/trained_8020_itildeq_seeds",
                    "--out-dir", "data/results/itildeq_seeds_8020"],
     "retrain": [".venv/bin/python",
-                "scripts/lidar_8020_itildeq_seeds_train.py"],
+                "scripts/experiments/lidar_8020_itildeq_seeds_train.py"],
     "source_dir": "data/results/itildeq_seeds_8020",
     "info": [
         ("Rodada", "trained_8020_itildeq_seeds"),

@@ -7,8 +7,8 @@ e confundia o diagnóstico.
 
 Fontes:
     data/results/lstm_lossab_8020/lossab_8020.json + images/*.png
-Gerador: scripts/lidar_8020_lstm_lossab_train.py (GPU) +
-         tests/lstm_lossab_8020.py (análise, CPU).
+Gerador: scripts/experiments/lidar_8020_lstm_lossab_train.py (GPU) +
+         studies/lstm_lossab_8020.py (análise, CPU).
 
     .venv/bin/python reports/lidar/8020-lstm-lossab/report.py
 """
@@ -64,8 +64,8 @@ def build(ctx):  # noqa: ARG001 (contrato do builder)
         return C.page_header(
             "A/B de loss nas LSTMs (80/20)",
             "Análise ainda não executada.") + C.note(
-            "Rode <code>scripts/lidar_8020_lstm_lossab_train.py</code> e "
-            "<code>tests/lstm_lossab_8020.py</code>.")
+            "Rode <code>scripts/experiments/lidar_8020_lstm_lossab_train.py</code> e "
+            "<code>studies/lstm_lossab_8020.py</code>.")
 
     d = json.loads(META_JSON.read_text(encoding="utf-8"))
     alpha = d.get("alpha", 0.05)
@@ -186,11 +186,11 @@ REPORT = {
     "title": "A/B de loss nas LSTMs (80/20)",
     "description": "horizon-weighted MSE × ITILDE-Q, mesmos HPs canônicos, "
                    "seed e protocolo; métricas densas/rolling e DM pareado.",
-    "regenerate": [".venv/bin/python", "tests/lstm_lossab_8020.py",
+    "regenerate": [".venv/bin/python", "studies/lstm_lossab_8020.py",
                    "--models-dir", "pipeline/tmp/trained_8020_lstm_lossab",
                    "--out-dir", "data/results/lstm_lossab_8020"],
     "retrain": [".venv/bin/python",
-                "scripts/lidar_8020_lstm_lossab_train.py"],
+                "scripts/experiments/lidar_8020_lstm_lossab_train.py"],
     "source_dir": "data/results/lstm_lossab_8020",
     "info": [
         ("Rodada", "trained_8020_lstm_lossab (4 modelos)"),

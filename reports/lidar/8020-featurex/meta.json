@@ -1,0 +1,4 @@
+{
+ "title": "Rodada 8020-featurex — 67 canais, MSE puro",
+ "description": "Rodada de estudo: cis1..19 + humid/temp somados à entrada (46→67 colunas) e MSE puro em todos os wrappers. Inclui piso de ruído de retreino (repro42) e variantes da LSTM-Bi. Não canônica."
+}

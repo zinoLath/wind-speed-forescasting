@@ -218,7 +218,7 @@ REPORT = {
         ("Grade", "OFAT α/β/γ (micro em execução)"),
         ("Protocolo", "80/20, 60 épocas, seed 42, HPs canônicos"),
         ("Pareado", "A/B lossab (hweight × ITILDE-Q, n=1203)"),
-        ("Coleta", "scripts/itildeq_terms_kaggle.py collect [--micro]"),
+        ("Coleta", "scripts/experiments/itildeq_terms_kaggle.py collect [--micro]"),
     ],
 }
 

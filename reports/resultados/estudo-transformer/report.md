@@ -104,7 +104,7 @@ Melhorou a convergência em relação a LR constante (usada nos testes Optuna/WF
 1. **`val_loss` NÃO correlaciona com MAE de teste.** Ex.: LSTM com val_loss 1.7e-05 → MAE 1.45; Transformer com val_loss ~1e-03 → MAE 1.33. O val (adjacente ao treino) é "fácil"; o teste (distante) é "difícil". **Otimizar por `val_loss` (Optuna padrão) não resolve o problema real.**
 2. **Sensibilidade a seed é alta.** O mesmo config com seeds diferentes varia ~0.04–0.07 no MAE. Comparações devem usar **múltiplas seeds**.
 3. **Baselines salvos podem estar obsoletos** (dataset mudou). Sempre re-executar os baselines no estado atual antes de comparar.
-4. **Harness reproduzível** (`tests/benchmark_transformer.py`): seed fixa, orçamento de épocas controlado, log em JSONL, opção de salvar previsões para diagnóstico.
+4. **Harness reproduzível** (`studies/benchmark_transformer.py`): seed fixa, orçamento de épocas controlado, log em JSONL, opção de salvar previsões para diagnóstico.
 
 ---
 
@@ -127,16 +127,16 @@ dropout_rate    : 0 a 0.3 (passo 0.05)
 
 ```bash
 # Benchmark justo de um modelo (seed reproduzível, log em data/results/benchmark_transformer.jsonl)
-python tests/benchmark_transformer.py --wrapper transformer_preln --schedule --loss mae \
+python studies/benchmark_transformer.py --wrapper transformer_preln --schedule --loss mae \
     --epochs 100 --seed 42 \
     --params '{"learning_rate": 0.0006, "d_model": 128, "num_heads": 8, "num_layers": 3, "ff_dim": 256, "dropout_rate": 0.1}'
 
 # Baselines para comparação (mesmo orçamento, dados atuais)
-python tests/benchmark_transformer.py --wrapper lstm --from-optuna --epochs 100 --seed 42
-python tests/benchmark_transformer.py --wrapper tcn   --from-optuna --epochs 40  --seed 42
+python studies/benchmark_transformer.py --wrapper lstm --from-optuna --epochs 100 --seed 42
+python studies/benchmark_transformer.py --wrapper tcn   --from-optuna --epochs 40  --seed 42
 
 # Busca Optuna (usa o wrapper PreLN + schedule)
-python tests/optuna_all_hyperparameters.py --wrappers transformer --n-trials 100 --epochs 60
+python studies/optuna_all_hyperparameters.py --wrappers transformer --n-trials 100 --epochs 60
 
 # Walk-forward com os melhores parâmetros
 python tests/wfo_optuna.py --wrappers transformer
@@ -166,7 +166,7 @@ O Transformer superou ambos LSTM e TCN (~6–7% em MAE) de forma consistente nos
 | `src/models/s2s_transformer_wrapper.py` | V1 (Post-LN) + `WarmupCosineSchedule` + `make_learning_rate` |
 | `src/models/s2s_transformer_preln_wrapper.py` | **Vencedor**: Pre-LN, PE aprendido, loss/weight-decay/clipnorm configuráveis |
 | `src/models/s2s_transformer_autoreg_wrapper.py` | Variante autorregressiva (testada, descartada) |
-| `tests/benchmark_transformer.py` | Harness de benchmark justo/reproduzível |
-| `tests/optuna_all_hyperparameters.py`, `tests/wfo_optuna.py`, `tests/wfo_imputed.py` | Integração do transformer (schedule habilitado) |
+| `studies/benchmark_transformer.py` | Harness de benchmark justo/reproduzível |
+| `studies/optuna_all_hyperparameters.py`, `tests/wfo_optuna.py`, `tests/wfo_imputed.py` | Integração do transformer (schedule habilitado) |
 | `notebooks/test_all_models_single_plot.ipynb`, `notebooks/test_all_models_per_model.ipynb` | Transformers incluídos na comparação de modelos |
 | `docs/relatório_transformer_improvements.md` | Relatório das iterações de melhoria |

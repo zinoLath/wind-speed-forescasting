@@ -13,7 +13,7 @@ Página metodológica da rodada mista 80/20-ITILDE-Q. Duas ideias centrais:
 
 Fontes dos números:
     data/results/metodos_itildeq/metodos_itildeq.json + images/*.png
-Gerador: tests/metodos_itildeq.py
+Gerador: studies/metodos_itildeq.py
 
     .venv/bin/python reports/lidar/8020-itildeq-metodos/report.py
 """
@@ -64,7 +64,7 @@ def build(ctx):  # noqa: ARG001 (contrato do builder)
         return C.page_header(
             "Erro normalizado + DM ajustado",
             "Análise ainda não executada.") + C.note(
-            "Rode <code>tests/metodos_itildeq.py --models-dir "
+            "Rode <code>studies/metodos_itildeq.py --models-dir "
             "pipeline/tmp/trained_8020_itildeq</code> (ou o botão "
             "<strong>Regenerar</strong> com o servidor ativo).")
 
@@ -255,7 +255,7 @@ REPORT = {
     "description": "MASE/skill/razão pelo erro intrínseco (persistência), "
                    "por estrato, e Diebold–Mariano ajustado (HLN+HAC, NW "
                    "auto, Holm, Clark–West).",
-    "regenerate": [".venv/bin/python", "tests/metodos_itildeq.py",
+    "regenerate": [".venv/bin/python", "studies/metodos_itildeq.py",
                    "--models-dir", "pipeline/tmp/trained_8020_itildeq",
                    "--out-dir", "data/results/metodos_itildeq"],
     "retrain": None,

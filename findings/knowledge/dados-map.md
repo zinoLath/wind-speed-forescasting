@@ -1,7 +1,7 @@
 ---
 title: Mapa de dados e artefatos
 area: dados
-updated: 2026-10-20
+updated: 2026-10-22
 ---
 
 # Mapa de dados e artefatos
@@ -31,7 +31,14 @@ Onde vivem entradas, saídas e artefatos — e o que é gitignored.
   rodadas Optuna em `data/results/optuna_round{2,4,4b,4c,5}`.
 - `data/results/report*/` — **fontes de dados dos relatórios LiDAR**
   (`evaluation.json` + `images/` + `mcs.json`); report_8020 é a rodada
-  canônica atual (ver finding `resultados-canonicos`).
+  canônica atual (ver finding `resultados-canonicos`). Métricas agora têm
+  fonte primária no banco `data/predictions.db` (finding `predicoes-db`) —
+  o evaluation.json vira fallback/cache.
+- `data/predictions.db` — banco SQLite das runs de predição
+  (`src/predictions_db.py`): runs por `report_id`, modelos, hp, features,
+  stats por horizonte (0 = total) e predições linha a linha. Gravado por
+  `reports/src/relatorio_resultados.py`; CLI
+  `python -m src.predictions_db list|show|homologar|prune`.
 - `data/results/lidar_<tag>_features/all.json` — avaliação inline do treino.
 - `data/results/metodos_complementares/` — ARIMA/RF + estatísticas DM/KSPA
   (`metodos.json`).

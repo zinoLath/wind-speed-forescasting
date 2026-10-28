@@ -14,11 +14,12 @@ updated: 2026-10-19
   (existe variante `.fish`) antes de qualquer treino/eval em GPU.
 - Sem CI, sem linter/formatter/type-checker configurados; `pyflakes` e
   `radon` úteis no dev (fora do requirements).
-- `tests/` **não é pytest**: scripts standalone (`python
-  tests/test_wrappers_build.py` etc.). Principais:
-  `test_wrappers_build.py` (build+predict de todos wrappers),
-  `test_create_sequences_equivalence.py` (vetorizado vs loop oráculo),
-  `ab_raw_vs_wavelet.py`, `benchmark_transformer.py`.
+- `tests/` **não é pytest**: só smoke tests `test_*.py` executados
+  com `python` direto (`python tests/test_wrappers_build.py` etc.):
+  `test_wrappers_build.py` (build+predict de todos wrappers) e
+  `test_create_sequences_equivalence.py` (vetorizado vs loop oráculo).
+  Estudos/ablações/A-Bs vivem em `studies/` (ex-`tests/`):
+  `ab_raw_vs_wavelet.py`, `benchmark_transformer.py`, etc.
 - Dashboard de treino no terminal: `python scripts/train_dashboard.py`
   (segue o run ativo; `--list`, `--run <substr>`, `--once`); grava por época
   em `pipeline/tmp/train_dashboard/<run>.jsonl` (`TRAIN_DASHBOARD=0`

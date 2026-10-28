@@ -6,7 +6,7 @@ horizon-weighted, 60 épocas, seed 42). Compara, horizonte a horizonte, os
 erros de dil. legado (trained_8020) × dil. C′ (trained_8020_tcn_cprime) via
 Diebold–Mariano.
 
-Fonte: data/results/dm_dilations/ (tests/dm_vs_hpo.py).
+Fonte: data/results/dm_dilations/ (studies/dm_vs_hpo.py).
 
     python reports/resultados/dm-dilations/report.py
 """
@@ -32,8 +32,8 @@ def build(ctx):  # noqa: ARG001
         return C.page_header(
             "DM por horizonte — dilatações TCN (legado × C′)",
             "Sem dados.") + C.note(
-            "Rode <code>python scripts/tcn_cprime_train.py</code> e "
-            "<code>python tests/dm_vs_hpo.py --a pipeline/tmp/trained_8020 "
+            "Rode <code>python scripts/experiments/tcn_cprime_train.py</code> e "
+            "<code>python studies/dm_vs_hpo.py --a pipeline/tmp/trained_8020 "
             "--b pipeline/tmp/trained_8020_tcn_cprime --wrappers tcn tcn_bi "
             "--out data/results/dm_dilations --a-label \"dil. legado\" "
             "--b-label \"dil. C′\"</code>.")
@@ -95,13 +95,13 @@ REPORT = {
     "title": "DM por horizonte — dilatações TCN (legado × C′)",
     "description": "Efeito isolado das dilatações estáticas C′ nos TCN "
                    "(HPs antigos, mesmo pipeline e loss).",
-    "regenerate": [".venv/bin/python", "tests/dm_vs_hpo.py",
+    "regenerate": [".venv/bin/python", "studies/dm_vs_hpo.py",
                    "--a", "pipeline/tmp/trained_8020",
                    "--b", "pipeline/tmp/trained_8020_tcn_cprime",
                    "--wrappers", "tcn", "tcn_bi",
                    "--out", "data/results/dm_dilations",
                    "--a-label", "dil. legado", "--b-label", "dil. C'"],
-    "retrain": [".venv/bin/python", "scripts/tcn_cprime_train.py"],
+    "retrain": [".venv/bin/python", "scripts/experiments/tcn_cprime_train.py"],
     "source_dir": "data/results/dm_dilations",
     "info": [
         ("Comparação", "dil. legado × dil. C′ (TCN, TCN-Bi)"),

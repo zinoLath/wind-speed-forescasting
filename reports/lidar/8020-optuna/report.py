@@ -30,11 +30,11 @@ REPORT, build = report_module(
              "skill vs ARIMA na validação (70/10/20), loss por modelo e "
              "dilatações estáticas C′ nos TCN.",
     badges=("80/20", "Optuna round 4", "skill vs ARIMA"),
-    regenerate=[".venv/bin/python", "tests/relatorio_resultados.py",
+    regenerate=[".venv/bin/python", "reports/src/relatorio_resultados.py",
                 "--models-dir", "pipeline/tmp/trained_8020_optuna",
                 "--out-dir", "data/results/report_8020_optuna",
                 "--no-baselines"],
-    retrain=[".venv/bin/python", "scripts/lidar_7525_train.py",
+    retrain=[".venv/bin/python", "scripts/experiments/lidar_7525_train.py",
              "--train-ratio", "0.80",
              "--output-dir", "pipeline/tmp/trained_8020_optuna",
              "--static-dilations"],

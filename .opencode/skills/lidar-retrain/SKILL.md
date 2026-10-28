@@ -1,6 +1,6 @@
 ---
 name: lidar-retrain
-description: Retreina os modelos seq2seq LiDAR sob o protocolo de reamostragem 80/20 — RODADA CANÔNICA = mista 8020-itildeq (TCN MSE + LSTM ITILDE-Q) — ou variantes (ponderada, 75/25, loss ablations), regenerando os relatórios padronizados. Use quando o usuário mencionar "retreinar", "treinar de novo", "reamostragem", "80/20", "novo treino lidar", ou comandos `scripts/lidar_8020_itildeq_train.py`, `scripts/lidar_7525_train.py`, `tests/relatorio_resultados.py`, `reports/treinamento/8020`.
+description: Retreina os modelos seq2seq LiDAR sob o protocolo de reamostragem 80/20 — RODADA CANÔNICA = mista 8020-itildeq (TCN MSE + LSTM ITILDE-Q) — ou variantes (ponderada, 75/25, loss ablations), regenerando os relatórios padronizados. Use quando o usuário mencionar "retreinar", "treinar de novo", "reamostragem", "80/20", "novo treino lidar", ou comandos `scripts/experiments/lidar_8020_itildeq_train.py`, `scripts/experiments/lidar_7525_train.py`, `reports/src/relatorio_resultados.py`, `reports/treinamento/8020`.
 ---
 
 # Retreino LiDAR sob a reamostragem (80/20)
@@ -25,12 +25,14 @@ cp -r pipeline/tmp/trained_8020_itildeq \
       pipeline/tmp/trained_8020_itildeq_backup_$(date +%Y%m%d%H%M)
 
 # 2) treino da rodada mista (losses/HPs por modelo já embutidos no script)
-python scripts/lidar_8020_itildeq_train.py
+python scripts/experiments/lidar_8020_itildeq_train.py
 
 # 3) regenerar figuras + evaluation.json + DM/MCS — SEM --no-baselines:
 #    DL e baselines (ARIMA/RF/persistência) saem na MESMA grade de
 #    origens (var implícita única — critério de consistência do artigo)
-python tests/relatorio_resultados.py \
+#    GRAVA a run no banco data/predictions.db (padrão; substitui a do
+#    report_id) — os relatórios do hub leem do banco
+python reports/src/relatorio_resultados.py \
     --models-dir pipeline/tmp/trained_8020_itildeq \
     --out-dir data/results/report_8020_itildeq
 
@@ -49,10 +51,10 @@ no texto pela skill **sbsr-integrate**.
 ## Rodada ponderada (legado — mesma mecânica, outra loss)
 
 ```bash
-python scripts/lidar_7525_train.py --train-ratio 0.80   # -> trained_8020
-python tests/relatorio_resultados.py --models-dir pipeline/tmp/trained_8020 \
+python scripts/experiments/lidar_7525_train.py --train-ratio 0.80   # -> trained_8020
+python reports/src/relatorio_resultados.py --models-dir pipeline/tmp/trained_8020 \
     --out-dir data/results/report_8020 --no-baselines
-# ablações: scripts/lidar_8020_mseloss_train.py | lidar_8020_startweight_train.py
+# ablações: scripts/experiments/lidar_8020_mseloss_train.py | lidar_8020_startweight_train.py
 ```
 
 Alternativa 2–4 automática: com o servidor do hub ativo
@@ -61,7 +63,7 @@ Alternativa 2–4 automática: com o servidor do hub ativo
 treino → regeneração → rebuild, com log em
 `reports/<cat>/<nome>/retrain.log`.
 
-Sessão de pós-re treino armada: `scripts/watch_retreino_itildeq.sh
+Sessão de pós-re treino armada: `scripts/dist/watch_retreino_itildeq.sh
 [MAX_H]` espera o treino começar/terminar e sozinho calcula os pontos
 (regeneração com baselines → tabelas → build) e notifica. Rodar com
 `setsid ... < /dev/null & disown` (log em
@@ -71,6 +73,12 @@ Sessão de pós-re treino armada: `scripts/watch_retreino_itildeq.sh
 
 - **Sempre fazer backup no passo 1** — não há undo do treino; os backups
   existentes ficam em `pipeline/tmp/trained_8020*_backup_*`.
+- **Banco de runs (sempre)**: a regeneração grava a run em
+  `data/predictions.db` (padrão, substitui a do report_id; nunca usar
+  `--no-db` em runbook). Conferir `python -m src.predictions_db show
+  <report>`; homologar o modelo escolhido com `python -m src.predictions_db
+  homologar <report> --model <nome>`. Regeneração de figuras sem GPU:
+  `reports/src/relatorio_resultados.py --from-db <report> ...`.
 - **Nunca usar `--no-baselines` na rodada canônica**: a Tabela 1 do
   artigo precisa de DL e baselines na mesma grade de origens (revisão
   SBSR — inconsistência R²×MSE).

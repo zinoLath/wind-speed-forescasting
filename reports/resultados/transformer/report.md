@@ -6,7 +6,7 @@ Foi criado um novo wrapper `S2STransformerWrapper` em `src/models/s2s_transforme
 
 Em seguida, o modelo foi integrado aos dois testes canônicos do projeto:
 
-1. **`tests/optuna_all_hyperparameters.py`** — adicionado o wrapper ao dicionário `wrapper_factories` e à lista `--wrappers` (`transformer`).
+1. **`studies/optuna_all_hyperparameters.py`** — adicionado o wrapper ao dicionário `wrapper_factories` e à lista `--wrappers` (`transformer`).
 2. **`tests/wfo_optuna.py`** — adicionado o wrapper ao dicionário `WRAPPERS`, permitindo a avaliação walk-forward com os melhores hiperparâmetros salvos pela busca.
 
 ## Configuração
@@ -48,7 +48,7 @@ Em seguida, o modelo foi integrado aos dois testes canônicos do projeto:
 
 ### Walk-forward (wfo, smoke test, 2 épocas, 344 amostras de teste)
 - MAE = **1.346**, RMSE = **1.723**, MSE = 2.968, R² = -0.535, tempo de predição ≈ 27 s.
-- Valores indicativos (modelo treinado com apenas 2 épocas e a mini-busca); para resultados conclusivos executar a busca completa (`python tests/optuna_all_hyperparameters.py --wrappers transformer --n-trials 100 --epochs 60`) e depois `python tests/wfo_optuna.py --wrappers transformer`.
+- Valores indicativos (modelo treinado com apenas 2 épocas e a mini-busca); para resultados conclusivos executar a busca completa (`python studies/optuna_all_hyperparameters.py --wrappers transformer --n-trials 100 --epochs 60`) e depois `python tests/wfo_optuna.py --wrappers transformer`.
 
 ## Validação da auditoria
 

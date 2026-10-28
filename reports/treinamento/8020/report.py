@@ -182,7 +182,7 @@ def build(ctx):
         "horizonte de 36 passos (6 h) em resolução de 10 min, alvo "
         "<code>ws100_wavelet</code> (wavelet sym18 nível 2) com métricas "
         "contra o <code>ws100</code> bruto. Comando: <code>python "
-        "scripts/lidar_7525_train.py --train-ratio 0.80</code> → modelos em "
+        "scripts/experiments/lidar_7525_train.py --train-ratio 0.80</code> → modelos em "
         "<code>pipeline/tmp/trained_8020</code>. Avaliação completa: "
         "<a href='../../lidar/8020/'>relatório LiDAR 80/20</a>.</p></div>",
         sec_id="protocolo"))
@@ -305,7 +305,7 @@ REPORT = {
     "description": "Curvas de treino, hiperparâmetros e avaliação inline do "
                    "protocolo de reamostragem 80/20.",
     "regenerate": None,  # reconstruir página já re-gera as curvas
-    "retrain": [".venv/bin/python", "scripts/lidar_7525_train.py",
+    "retrain": [".venv/bin/python", "scripts/experiments/lidar_7525_train.py",
                 "--train-ratio", "0.80"],
     "source_dir": "pipeline/tmp/train_dashboard",
     "info": [("Protocolo", "80/20 sem validação"), ("Épocas", "60 fixas"),

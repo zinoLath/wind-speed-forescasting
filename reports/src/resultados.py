@@ -1,8 +1,10 @@
 """Renderizador padrao dos relatorios de resultados LiDAR.
 
-Converte um diretorio de saida do protocolo antigo (data/results/report_*/:
-evaluation.json + images/) em uma pagina padronizada do hub, com tabelas e
-figuras exportaveis para LaTeX (steam/sbsr/generic).
+Converte a run do banco de predições (data/predictions.db, resolvida por
+report_id) ou, na falta dela, o diretorio de saida do protocolo antigo
+(data/results/report_*/: evaluation.json + images/) em uma pagina
+padronizada do hub, com tabelas e figuras exportaveis para LaTeX
+(steam/sbsr/generic).
 
 Usado pelos report.py em reports/lidar/<experimento>/.
 """
@@ -11,6 +13,7 @@ from __future__ import annotations
 
 import json
 import shutil
+import sqlite3
 import sys
 from pathlib import Path
 
@@ -19,6 +22,10 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from reports.src import components as C  # noqa: E402
+
+# Popups LaTeX das páginas de resultados abrem em SBSR por default (o
+# formato steam usa \rowcolor/colortbl, que o template do SBSR não carrega).
+FORMATS = ("sbsr", "steam", "generic")
 
 FIGURE_CAPTIONS = {
     "01_split_temporal": "Divisão temporal do dataset LiDAR (treino/validação/teste)",
@@ -48,6 +55,11 @@ FIGURE_CAPTIONS = {
     "16_wavelet_vs_real": "Erro vs alvo wavelet vs erro ws100 bruto",
     "16c_significancia_dm_ab_loss": "DM das variantes de loss (A/B de função de perda)",
     "16d_mcs": "Model Confidence Set — p-valor de exclusão por modelo (agregado sobre os 36 horizontes)",
+    "fig_testes_hipotese": ("Testes de hipótese — rank médio de Friedman, ΔMSE médio por origem, "
+                            "estatística e p-valor do Diebold–Mariano (HLN+HAC), p-valor do Wilcoxon "
+                            "pareado+Holm e MCS multi-α. Borda verde = rejeita H₀ a 5%"),
+    "16e_bootstrap_ci": ("ΔMSE (linha − coluna) com IC95% por bootstrap em blocos — "
+                         "* = IC exclui zero; positivo = modelo da linha pior"),
 }
 
 METRIC_ORDER = ("mse", "rmse", "mae", "r2")
@@ -78,7 +90,8 @@ FIGURE_THEMES = [
      ("05_mae_por_horizonte_real", "05_mae_por_horizonte_wavelet",
       "06_heatmap_mse_horizonte", "06_heatmap_r2_horizonte",
       "16_significancia_dm", "16b_significancia_dm_pvalor",
-      "16c_significancia_dm_ab_loss", "16d_mcs"),
+      "16c_significancia_dm_ab_loss", "16d_mcs", "16e_bootstrap_ci",
+      "fig_testes_hipotese"),
      "O erro cresce com o horizonte — o esperado —, mas o ponto crítico é "
      "<strong>onde cada modelo cruza a persistência</strong>: passos curtos "
      "(1–6) tendem a ficar aquém do ingênuo, e a vantagem aparece nos "
@@ -87,7 +100,16 @@ FIGURE_THEMES = [
      "critério estatístico: célula positiva = modelo da linha com perda "
      "maior (pior); com poucas células significativas (p &lt; 0,05), as "
      "diferenças entre wrappers são empate técnico — o que orienta a "
-     "escolha por custo de treino/inferência em vez de só por MSE."),
+     "escolha por custo de treino/inferência em vez de só por MSE. O "
+     "heatmap de bootstrap em blocos reforça a leitura sem suposição "
+     "paramétrica: célula com <strong>*</strong> tem IC95% do ΔMSE que "
+     "exclui zero (2.000 reamostragens em blocos de 36 origens). A "
+     "matriz-síntese fecha o painel com os três testes em uma figura: "
+     "Wilcoxon pareado + Holm (triângulo superior) separa distribuições, "
+     "Diebold–Mariano (inferior) testa a perda média esperada, e a "
+     "diagonal traz MSE e rank de Friedman (origens como blocos) — a "
+     "leitura típica é Wilcoxon separando o topo enquanto o DM mantém o "
+     "empate de perdas médias."),
     ("Trajetórias e previsões autônomas",
      ("07_fan_chart", "08_rolling_forecast_real",
       "08_rolling_forecast_wavelet", "10_piores_predicoes_lstm"),
@@ -214,6 +236,76 @@ def _summary_text(models: list) -> str:
     )
 
 
+def _hp_section(models: list) -> str:
+    """Tabela de hiperparâmetros por modelo (requer run do banco)."""
+    entries = []
+    for m in models:
+        hp = m.get("hp") or {}
+        feats = m.get("features") or []
+        entries.append((m.get("short", m.get("name", "?")), hp, len(feats),
+                        m.get("seed"), m.get("loss"), feats))
+    if not any(e[1] for e in entries):
+        return ""
+
+    def cell(v):
+        if v is None:
+            return "—"
+        if isinstance(v, float):
+            return f"{v:.6g}".replace(".", ",")
+        if isinstance(v, (list, tuple)):
+            return "[" + ", ".join(cell(x) for x in v) + "]"
+        return str(v)
+
+    keys = []
+    for _, hp, *_ in entries:
+        for k in hp:
+            if k not in keys:
+                keys.append(k)
+    rows = [("seed", *(cell(e[3]) for e in entries)),
+            ("colunas de entrada",
+             *(str(e[2]) if e[2] else "—" for e in entries)),
+            ("loss", *(cell(e[4]) for e in entries))]
+    rows += [(k, *(cell(e[1].get(k)) for e in entries)) for k in keys]
+    hp_table = C.table(
+        ["Parâmetro", *(e[0] for e in entries)], rows,
+        "Hiperparâmetros de treino de cada modelo da rodada "
+        "(seed, colunas de entrada e o dicionário gravado no "
+        "model.json / banco de runs).", formats=FORMATS,
+        label="tab:hiperparametros")
+
+    feat_rows = [
+        ("ws40–ws140", "velocidade horizontal do vento em 11 alturas "
+                       "(40–140 m, passo de 10 m)"),
+        ("v40–v140", "componente v do vento nas mesmas 11 alturas"),
+        ("dir_h_sin/cos", "direção do vento codificada em seno/cosseno nas "
+                          "11 alturas (22 colunas)"),
+        ("hour_sin/cos", "hora do dia codificada ciclicamente (2 colunas)"),
+        ("cis1–cis19", "cisalhamento vertical do perfil do vento (19 "
+                       "colunas) — somente nos LSTMs"),
+        ("humid, temp", "umidade relativa e temperatura de superfície "
+                        "(2 colunas)"),
+    ]
+    feat_table = C.table(
+        ["Variável", "Descrição"], feat_rows,
+        "Grupos de variáveis de entrada (44 + 2 colunas comuns a todos; "
+        "os LSTMs somam o cisalhamento, totalizando 67 colunas contra 48 "
+        "das TCNs).", formats=FORMATS,
+        label="tab:entradas")
+
+    return C.section(
+        "Hiperparâmetros",
+        hp_table + feat_table,
+        sub="TCNs herdam os HPs da canônica 16/10 (dilatações estáticas C′ "
+            "com <code>encoder_dil_depth</code>/<code>decoder_dil_depth</code> "
+            "e kernel/stacks fixos); LSTMs usam os HPs do HPO 80/20. A perda "
+            "é MSE pura em todos os wrappers. As colunas de entrada seguem o "
+            "<code>feature_keep</code> por wrapper do lineup misto "
+            "(48/48/67/67); sobre elas o wrapper ainda acrescenta os canais "
+            "de alvo (<code>ws100_wavelet</code> e último observado) ao "
+            "encoder.",
+        sec_id="hiperparametros")
+
+
 def _mcs_section(src: Path) -> str:
     """Seção do Model Confidence Set (quando mcs.json existe na fonte)."""
     path = src / "mcs.json"
@@ -244,7 +336,7 @@ def _mcs_section(src: Path) -> str:
                 rows, "Model Confidence Set (Hansen, Lunde & Nason, 2011): "
                 "modelos no conjunto são estatisticamente indistinguíveis "
                 "quando a comparação agrega toda a trajetória de 36 passos.",
-                label="tab:mcs",
+                formats=FORMATS, label="tab:mcs",
                 highlight_rows=[i for i, r in enumerate(rows)
                                 if "pertence" in r[3]],
                 note=note),
@@ -256,16 +348,48 @@ def _mcs_section(src: Path) -> str:
         sec_id="mcs")
 
 
+def _run_from_db(report_key: str):
+    """Run canônica do banco de predições para este relatório.
+
+    Retorna (run_row, results_dict) ou (None, None) quando o banco não
+    existe / não tem run para o ``report_id`` (ex.: ``lidar/8020``).
+    """
+    if not report_key:
+        return None, None
+    from src import predictions_db
+
+    try:
+        conn = predictions_db.connect(read_only=True)
+    except (FileNotFoundError, sqlite3.Error):
+        return None, None
+    try:
+        run = predictions_db.run_by_report(conn, report_key)
+        if run is None:
+            return None, None
+        return run, predictions_db.results_dict(conn, run["id"])
+    finally:
+        conn.close()
+
+
 def build_report(ctx, *, source_dir: str, title: str, subtitle: str = "",
                  badges=(), protocol_note: str = "") -> str:
-    """Gera o corpo HTML padronizado do relatorio de resultados."""
+    """Gera o corpo HTML padronizado do relatorio de resultados.
+
+    A fonte primária é o banco de runs (data/predictions.db, resolvido por
+    ``<categoria>/<nome>``); sem run gravada, cai para o evaluation.json da
+    pasta fonte (compatibilidade com rodadas antigas).
+    """
     src = PROJECT_ROOT / source_dir
+    report_key = f"{ctx.category}/{ctx.name}"
+    run_row, db_data = _run_from_db(report_key)
     evaluation_path = src / "evaluation.json"
-    if not evaluation_path.is_file():
-        return (f'<section><h2>Sem dados</h2><p><code>{C.esc(source_dir)}/'
+    if db_data is None and not evaluation_path.is_file():
+        return (f'<section><h2>Sem dados</h2><p>Nenhuma run de '
+                f'<code>{C.esc(report_key)}</code> no banco '
+                f'(<code>data/predictions.db</code>) e <code>{C.esc(source_dir)}/'
                 f'evaluation.json</code> não encontrado. Use o botão '
                 f'<strong>Regenerar</strong> (servidor ativo) ou rode '
-                f'<code>tests/relatorio_resultados.py</code>.</p></section>')
+                f'<code>reports/src/relatorio_resultados.py</code>.</p></section>')
 
     # figuras: copia para a pasta do relatorio (artefatos locais da pagina)
     fig_prefix = "figures"
@@ -275,15 +399,20 @@ def build_report(ctx, *, source_dir: str, title: str, subtitle: str = "",
             shutil.rmtree(local_figs)
         shutil.copytree(src / "images", local_figs)
 
-    data = json.loads(evaluation_path.read_text(encoding="utf-8"))
+    data = db_data if db_data is not None \
+        else json.loads(evaluation_path.read_text(encoding="utf-8"))
     models = sorted(data.values(), key=lambda m: m.get("all", {})
                     .get("mse", 9e9))
 
     # ---- cards
     best = models[0]
     total_params = sum(m.get("params", 0) for m in models)
+    extra_badges = [source_dir]
+    if run_row is not None:
+        extra_badges.append(
+            f"banco: run #{run_row['id']} · {run_row['category']}")
     parts = [C.page_header(
-        title, subtitle, badges=list(badges) + [source_dir]),
+        title, subtitle, badges=list(badges) + extra_badges),
         C.cards([
             (len(models), "modelos seq2seq"),
             (f"{best.get('short', '?')} · {_fmt(best['all']['mse'])}",
@@ -297,6 +426,21 @@ def build_report(ctx, *, source_dir: str, title: str, subtitle: str = "",
 
     if protocol_note:
         parts.append(C.note(protocol_note))
+    if run_row is not None:
+        generator = (run_row["source_file"] or run_row["source"] or "—")
+        repro = (f"Modelos: <code>{run_row['models_dir'] or '—'}</code> · "
+                 f"gerador: <code>{generator}</code>"
+                 + (f" · saída: <code>{run_row['out_file']}</code>"
+                    if run_row["out_file"] else ""))
+        if run_row["source_cmd"]:
+            repro += (f'<div style="font-size:11px;word-break:break-all">'
+                      f"<code>{run_row['source_cmd']}</code></div>")
+        parts.append(C.note(
+            f"Fonte de dados: <code>data/predictions.db</code> — run "
+            f"<strong>#{run_row['id']}</strong> ({run_row['category']}), "
+            f"criada em {str(run_row['created_at']).replace('T', ' ')[:19]}. "
+            f"Métricas de <code>run_model_stath</code>; predições linha a "
+            f"linha em <code>run_model_prediction</code>.<br>{repro}"))
 
     # ---- síntese da análise
     parts.append(C.section(
@@ -312,28 +456,36 @@ def build_report(ctx, *, source_dir: str, title: str, subtitle: str = "",
     for m in models:
         a = m["all"]
         rows.append((m.get("short", m.get("name", "?")),
-                     m.get("loss") or "—",
-                     _fmt(a.get("mse")), _fmt(a.get("rmse")),
-                     _fmt(a.get("mae")), _fmt(a.get("r2"))))
+                     _fmt(a.get("r2")), _fmt(a.get("mse")),
+                     _fmt(a.get("rmse")), _fmt(a.get("mae"))))
+    base_metrics = {}
+    base_path = src / "baselines.json"
+    if base_path.is_file():
+        base_metrics = json.loads(base_path.read_text(encoding="utf-8"))
+    for key, label in (("arima", "ARIMA (baseline)"),
+                       ("rf", "Random Forest (baseline)"),
+                       ("persistence", "Persistência (baseline)")):
+        blk = base_metrics.get(key, {}).get("all_horizons")
+        if blk:
+            rows.append((label, _fmt(blk.get("r2")), _fmt(blk.get("mse")),
+                         _fmt(blk.get("rmse")), _fmt(blk.get("mae"))))
     best_mse = min(float(r[2].replace(",", ".")) for r in rows)
     highlight = [i for i, r in enumerate(rows)
                  if float(r[2].replace(",", ".")) == best_mse]
     parts.append(C.section(
         "Métricas — todos os horizontes (1–36 passos, vs ws100 bruto)",
-        C.table(["Modelo", "Loss", "MSE (m/s)²", "RMSE (m/s)", "MAE (m/s)",
-                 "R²"], rows,
-                "Métricas de erro dos modelos seq2seq em todos os horizontes.",
-                label="tab:metricas_geral", highlight_rows=highlight,
-                note="menor MSE destacado; avaliação sobre as janelas do "
-                     "conjunto de teste."),
-        sub="Cada previsão é avaliada no timestamp que ela almeja: o passo "
-            "1 confere com a observação 10 min à frente, o passo 36 com a "
-            "de 6 h. MSE/RMSE penalizam erros grandes (rampas de vento); "
-            "MAE é a leitura em escala natural; R² mede a variância "
-            "explicada — perto de 0,4–0,5 neste sítio é bom desempenho "
-            "multi-passo, pois o vento a 6 h tem pouca previsibilidade "
-            "determinística.",
+        C.table(["Modelo", "R²", "MSE", "RMSE", "MAE"], rows,
+                "Métricas de erro dos modelos seq2seq e dos baselines "
+                "estatísticos na mesma grade de origens (MSE, RMSE e MAE "
+                "em m/s).",
+                formats=FORMATS, label="tab:metricas_geral",
+                highlight_rows=highlight),
         sec_id="metricas"))
+
+    # ---- hiperparâmetros (requer hp gravado — run do banco)
+    hp_html = _hp_section(models)
+    if hp_html:
+        parts.append(hp_html)
 
     # ---- tabela: rolling
     if all("rolling" in m for m in models):
@@ -348,7 +500,8 @@ def build_report(ctx, *, source_dir: str, title: str, subtitle: str = "",
             "Rolling forecast autônomo (h = 36 passos ≈ 6 h)",
             C.table(["Modelo", "MSE (m/s)²", "RMSE (m/s)", "MAE (m/s)", "R²"],
                     rows, "Métricas do rolling forecast autônomo (horizonte "
-                    "de 36 passos).", label="tab:metricas_rolling",
+                    "de 36 passos).", formats=FORMATS,
+                    label="tab:metricas_rolling",
                     highlight_rows=highlight,
                     note="o modelo vê apenas o histórico; nenhuma entrada "
                          "futura real."),
@@ -376,7 +529,7 @@ def build_report(ctx, *, source_dir: str, title: str, subtitle: str = "",
             C.table(["Modelo", "Latência (1 janela)", "Por janela (lote)",
                      "Janelas/s", "Parâmetros", "model.keras"], rows,
                     "Custos de inferência e tamanho dos modelos.",
-                    label="tab:inferencia"),
+                    formats=FORMATS, label="tab:inferencia"),
             sub="Latência single-shot = custo de uma chamada do modelo para "
                 "uma janela (cenário de operação online, 1 previsão de 6 h "
                 "a cada ciclo); \"por janela (lote)\" é o custo amortizado "

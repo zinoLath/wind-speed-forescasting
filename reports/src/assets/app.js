@@ -119,7 +119,7 @@
     };
     return tpl.replace(/\{(\w+)\}/g, function (m, k) {
       return (vals[k] !== undefined ? vals[k] : m);
-    }).replace(/\{(\w+)\}/g, "$1");
+    });
   }
 
   function refresh() {

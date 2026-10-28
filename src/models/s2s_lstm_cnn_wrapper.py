@@ -43,9 +43,11 @@ class S2SLSTMCNNWrapper(Seq2SeqWrapper):
         self.loss = LOSS_NAME
 
         if weight_decay:
-            optimizer = AdamW(learning_rate=learning_rate, weight_decay=weight_decay)
+            optimizer = AdamW(learning_rate=learning_rate, weight_decay=weight_decay,
+                               clipnorm=getattr(self, "clipnorm", 1.0))
         else:
-            optimizer = Adam(learning_rate=learning_rate)
+            optimizer = Adam(learning_rate=learning_rate,
+                              clipnorm=getattr(self, "clipnorm", 1.0))
 
         lstm_units = hp.Int('lstm_units', min_value=32, max_value=192, step=32, default=64)
         encoder_dropout_rate = hp.Float(

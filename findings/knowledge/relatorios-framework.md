@@ -12,7 +12,7 @@ arquitetura:
 - **Todo relatório vive em `reports/<categoria>/<nome>/`** (página,
   análise pós-modelo, report.py/md/html + figuras + meta.json). NUNCA
   criar relatório em `docs/`, na raiz ou em `data/results/`. Geradores
-  (`tests/*.py`, `scripts/*.py`) escrevem direto em `reports/`.
+  (`studies/*.py`, `scripts/**/*.py`) escrevem direto em `reports/`.
 - Categorias: `treinamento/` (curvas de treino), `lidar/` (resultados por
   protocolo: 7525, 8020, 8020-itildeq*, 8020-lstm-lossab, 8020-mseloss,
   8020-optuna, duel-loss, homologado, lstm-bi-origins, nonorm),

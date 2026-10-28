@@ -21,12 +21,12 @@ def main():
     print("wrapper names unique: OK")
 
     rng = np.random.default_rng(0)
-    index = pd.date_range("2022-01-01", periods=400, freq="10min")
+    index = pd.date_range("2022-01-01", periods=600, freq="10min")
     df = pd.DataFrame(
         {
-            "ws100": rng.uniform(3, 12, 400),
-            "ws90": rng.uniform(3, 12, 400),
-            "dir100": rng.uniform(0, 360, 400),
+            "ws100": rng.uniform(3, 12, 600),
+            "ws90": rng.uniform(3, 12, 600),
+            "dir100": rng.uniform(0, 360, 600),
         },
         index=index,
     )
@@ -35,13 +35,13 @@ def main():
         for key in common.WRAPPERS:
             wrapper = common.wrapper_factory(key)()
             wrapper.prepare(
-                df.iloc[:320], df.iloc[320:],
+                df.iloc[:480], df.iloc[480:],
                 input_steps=24, output_steps=12, target_col="ws100_wavelet",
                 persistence_gate=gate,
             )
             model = wrapper.build(common.FixedHyperParameters(common.DEFAULT_HYPERPARAMETERS[key]))
             params = model.count_params()
-            pred = wrapper.predict(df.iloc[320:320 + 24])
+            pred = wrapper.predict(df.iloc[480:480 + 24])
             assert pred.shape == (12,), f"{key}: unexpected prediction shape {pred.shape}"
             label = f"{key} gate={'on' if gate else 'off'}"
             print(f"OK {label:<22} {wrapper.name:<28} params={params:>9,} predict={pred.round(2)}")

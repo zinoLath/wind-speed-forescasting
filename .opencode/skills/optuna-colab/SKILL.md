@@ -1,12 +1,12 @@
 ---
 name: optuna-colab
-description: Prepara, executa, monitora e conserte a rodada distribuída do Optuna (wrappers pesados em notebooks do Google Colab e kernels do Kaggle, leves na GPU local, watchdogs anti-OOM com RAM calibrada por ambiente). Use quando o usuário mencionar "rodada optuna", "optuna colab", "optuna kaggle", "distribuir optuna", "round2", notebooks/kernels travados/parados/OOM em `notebooks/colab_round2/`, ou comandos `scripts/colab_round2.py` / `scripts/colab_monitor.py` / `scripts/kaggle_round2_worker.py`.
+description: Prepara, executa, monitora e conserte a rodada distribuída do Optuna (wrappers pesados em notebooks do Google Colab e kernels do Kaggle, leves na GPU local, watchdogs anti-OOM com RAM calibrada por ambiente). Use quando o usuário mencionar "rodada optuna", "optuna colab", "optuna kaggle", "distribuir optuna", "round2", notebooks/kernels travados/parados/OOM em `notebooks/colab_round2/`, ou comandos `scripts/dist/colab_round2.py` / `scripts/dist/colab_monitor.py` / `scripts/dist/kaggle_round2_worker.py`.
 ---
 
 # Optuna Round 2 — distribuído (Colab + Kaggle + GPU local)
 
-Infra: `scripts/colab_round2.py` (plan/package/notebooks/local/kaggle/collect),
-`scripts/colab_monitor.py` (status/watch), `scripts/kaggle_round2_worker.py`
+Infra: `scripts/dist/colab_round2.py` (plan/package/notebooks/local/kaggle/collect),
+`scripts/dist/colab_monitor.py` (status/watch), `scripts/dist/kaggle_round2_worker.py`
 (watchdog interno dos kernels), `notebooks/colab_round2/*.ipynb` (gerados, NÃO
 editar à mão — regenerar), config `pipeline/pipeline.optuna_round2.json`
 (wrappers `lstm, lstm_bi, tcn, tcn_bi`; estudo `round2` em
@@ -36,9 +36,9 @@ source .venv/bin/activate && source scripts/tf_gpu_env.sh
 ## 1. Preparar (rodada nova)
 
 ```bash
-python scripts/colab_round2.py all --colab-gpus 1 --kaggle-gpus 1  # plan+package+notebooks
-python scripts/colab_round2.py local --start   # watchdog local (lstm, lstm_bi)
-python scripts/colab_round2.py kaggle          # dataset + push dos kernels (--dry-run p/ inspecionar)
+python scripts/dist/colab_round2.py all --colab-gpus 1 --kaggle-gpus 1  # plan+package+notebooks
+python scripts/dist/colab_round2.py local --start   # watchdog local (lstm, lstm_bi)
+python scripts/dist/colab_round2.py kaggle          # dataset + push dos kernels (--dry-run p/ inspecionar)
 ```
 
 Passos manuais do usuário (impressos pelo `all`):
@@ -47,18 +47,18 @@ Passos manuais do usuário (impressos pelo `all`):
 3. para observação remota dos notebooks, espelho do Drive: `--drive-dir <pasta>`
    (desktop, `rclone --rclone-remote gdrive`, ou download manual).
 
-Observação: `python scripts/colab_round2.py kaggle` empurra 1 kernel por worker
+Observação: `python scripts/dist/colab_round2.py kaggle` empurra 1 kernel por worker
 Kaggle do plano (GPU + internet, restaura progresso do dataset, roda o worker
 watchdog e zipa o output). Auth: `~/.kaggle/access_token` (bearer) — o usuário
 real do namespace é auto-detectado via `kaggle kernels list --mine`.
 
-Iniciar a observação: `python scripts/colab_monitor.py --watch 60`.
+Iniciar a observação: `python scripts/dist/colab_monitor.py --watch 60`.
 
 ## 2. Observar
 
 ```bash
-python scripts/colab_monitor.py --json      # snapshot máquina (exit 3 = problema)
-python scripts/colab_monitor.py --watch 60  # painel humano
+python scripts/dist/colab_monitor.py --json      # snapshot máquina (exit 3 = problema)
+python scripts/dist/colab_monitor.py --watch 60  # painel humano
 ```
 
 Estados por wrapper: `done` (atingiu n_trials), `running`, `STALE`
@@ -84,21 +84,21 @@ em qualquer problema (etapa 3).
 | "Nenhum colab_round2_package_*.zip" | zip não subiu / pasta errada | confirmar caminho `MyDrive/wind-speed-colab/round2/package/` com o usuário |
 | kernel Kaggle não acha o repo (`pacote do projeto nao encontrado`) | dataset sem o zip novo | `colab_round2.py kaggle --repackage` (re-versiona o dataset) e re-empurrar o kernel |
 | muitos `TrialPruned("OOM")` / `user_attr oom` | espaço de busca acima da VRAM do runtime | normal em parte (<30%); se massivo em tcn_bi, sugerir runtime maior (L4/A100) OU reduzir `TCN_RANGES` no código — nunca mudar só um worker (viés no estudo) |
-| watchdog local reinicia muito (RAM) | `MAX_USED_GB` alto demais p/ a máquina | reduzir: `MAX_USED_GB=<0.8*RAM> bash scripts/optuna_watchdog.sh ...`; conferir outras cargas |
+| watchdog local reinicia muito (RAM) | `MAX_USED_GB` alto demais p/ a máquina | reduzir: `MAX_USED_GB=<0.8*RAM> bash scripts/dist/optuna_watchdog.sh ...`; conferir outras cargas |
 | `sqlite3.OperationalError: database is locked` | dois escritores no mesmo estudo | verificar plano: cada wrapper em exatamente 1 worker (`plan.json`); matar o duplicado |
 | wrapper parado no mesmo nº de trials com status running | kernel/notebook travado sem crash | heartbeat congelado + RAM estável = runtime morto; pedir reabrir (Colab) ou re-empurrar kernel (Kaggle) |
 | heartbeat com `sync_drive: ...` erro | mount do Drive caiu em sessão longa | se persistir por >3 syncs, pedir reabrir notebook; progresso até o último sync é preservado |
 
 Regras: nunca editar `notebooks/colab_round2/*.ipynb` nem kernels em
-`dist/kaggle/` à mão (fonte é `scripts/colab_round2.py` / `kaggle_runner.py`);
+`dist/kaggle/` à mão (fonte é `scripts/dist/colab_round2.py` / `kaggle_runner.py`);
 nunca matar processos do usuário sem perguntar; testar `python -m py_compile` e
 `pyflakes` após editar scripts; commits só sob pedido.
 
 ## 4. Encerrar (todos `done`)
 
 ```bash
-python scripts/colab_round2.py collect --kaggle --drive-dir <mirror> --promote
-python scripts/colab_monitor.py --json   # confirmar all_done
+python scripts/dist/colab_round2.py collect --kaggle --drive-dir <mirror> --promote
+python scripts/dist/colab_monitor.py --json   # confirmar all_done
 ```
 
 `collect` traz: outputs dos kernels Kaggle (zips com `pipeline/tmp/...`,

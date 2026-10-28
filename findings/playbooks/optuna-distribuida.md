@@ -10,19 +10,19 @@ Fonte: skill **optuna-colab** (runbook autoritativo com playbook de erros).
 
 ```bash
 # planejar/empacotar/gerar notebooks (pesados -> Colab/Kaggle; leves -> local)
-python scripts/colab_round2.py all --colab-gpus 1 --kaggle-gpus 1
+python scripts/dist/colab_round2.py all --colab-gpus 1 --kaggle-gpus 1
 
 # watchdog local (wrappers leves)
-python scripts/colab_round2.py local --start
+python scripts/dist/colab_round2.py local --start
 
 # submeter kernels Kaggle
-python scripts/colab_round2.py kaggle
+python scripts/dist/colab_round2.py kaggle
 
 # monitorar (exit 3 = erro/stale)
-python scripts/colab_monitor.py --watch 60
+python scripts/dist/colab_monitor.py --watch 60
 
 # coletar e promover resultados
-python scripts/colab_round2.py collect --kaggle --drive-dir <mirror> --promote
+python scripts/dist/colab_round2.py collect --kaggle --drive-dir <mirror> --promote
 ```
 
 Pontos-chave:

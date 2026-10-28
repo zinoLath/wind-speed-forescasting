@@ -1,26 +1,34 @@
 ---
 title: Protocolo de avaliação (80/20, métricas, rolling)
 area: protocolo
-updated: 2026-10-19
+updated: 2026-10-28
 ---
 
 # Protocolo de avaliação
 
-Dois protocolos coexistem — saber qual está em jogo é essencial:
+Três protocolos coexistem — saber qual está em jogo é essencial:
 
-## 1) Pipeline padrão (legado do TCC)
+## 1) Pipeline padrão = protocolo reval (default desde 28/10/2026)
 
-Split cronológico **75/20/5** (treino/validação/teste, sem embaralhamento);
-`MinMaxScaler` (alvo e covariáveis separados) ajustado **só no treino**;
-early stopping na val_loss (decoder em modo inferência); walk-forward de
-60 d treino / 30 d teste / avanço 30 d com retreino do zero (partição
-interna 80/20).
+**O `python pipeline/pipeline.py` (estágio train) roda por default o
+protocolo reval**: split cronológico **72,5/12,5/15** (treino/validação/
+teste), **EarlyStopping(val_loss, patience 12, restore_best) +
+ReduceLROnPlateau** (via `common.default_callbacks`), **60 épocas**, seed
+42, MSE pura, alvo `ws100_wavelet` (denoise `["ws100"]` nível 2). Valores
+em `pipeline/pipeline.default.json` E `pipeline/pipeline.json` (o arquivo
+de usuário sobrescreve o default — os dois precisam estar alinhados).
+Antes de 28/10 o default era 75/20/5 com patience 8/épocas 100 e o
+`pipeline.json` antigo usava denoise `["ws100","ws40","v40"]` nível 1
+(desalinhado do canônico). O treinador standalone equivalente é
+`scripts/lidar_reval_sbsr_train.py` (lineup feature_keep por wrapper);
+o estágio train treina 1 wrapper (default `lstm_bi`) — o lineup completo
+continua nos scripts.
 
-## 2) Protocolo LiDAR de reamostragem (canônico dos relatórios/artigos)
+## 2) Protocolo LiDAR 80/20 (rodada oficial do paper `8020-sbsr`)
 
 - Split temporal **80/20 sem validação**, orçamento fixo de **60 épocas**,
   seed 42; janela 72→36 passos; alvo `ws100_wavelet`.
-- Gerado por `scripts/lidar_7525_train.py --train-ratio 0.80` →
+- Gerado por `scripts/experiments/lidar_7525_train.py --train-ratio 0.80` →
   `pipeline/tmp/trained_8020`; variantes 75/25, MSE pura, loss invertida,
   seeds múltiplas (`itildeq`).
 - **Métricas headline sempre contra `ws100` BRUTO**; contra o alvo denoised
@@ -34,6 +42,17 @@ interna 80/20).
 - Resultados **variam entre execuções** (sem early stopping): diferenças de
   ±0.3 MSE não são regressão; comparar com a rodada anterior e comentar
   variância.
+
+## HPO e vazamento
+
+Otimizar hiperparâmetros **contra o teste** é vazamento de seleção: o
+conjunto de teste influencia a escolha do modelo, e o melhor de N trials
+fica otimista pelo máximo do ruído (viés de seleção) — o número deixa de
+ser estimativa honesta. Regra: objetivo/pruning **só** na validação
+(holdout do treino ou split temporal dedicado); teste intocado até a
+avaliação final. HPO em 80/20 sem validação exige segurar uma fatia do
+treino para objetivo. Exceção consciente: estudo exploratório (ex.:
+round6), explicitamente não reportável.
 
 ## Fontes
 

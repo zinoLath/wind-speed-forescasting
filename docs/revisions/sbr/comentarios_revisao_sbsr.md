@@ -70,7 +70,7 @@ arquivos `.tex`. Toda localização inferida está marcada com
       local; **a figura do heatmap vem de outra rodada que a tabela**.
       Recalcular tabela+figuras de UMA rodada canônica.
 - [ ] **[AÇÃO]** Teste estatístico (DM + bootstrap em blocos) no
-      Resultados — a ferramenta já existe (`tests/relatorio_resultados.py`).
+      Resultados — a ferramenta já existe (`reports/src/relatorio_resultados.py`).
 - [ ] **[AÇÃO]** Descrever a função de perda conforme a rodada canônica
       (texto atual "LSTM ponderada, TCN MSE" não bate com nenhuma rodada).
 - [x] **[CORRIGIDO]** Atualizar dado ANEEL na Introdução com fonte
@@ -316,7 +316,7 @@ arquivos `.tex`. Toda localização inferida está marcada com
   se coletado ou computado e seu significado. Faltou aqui você mostrar
   pro leitor o que de fato entreu nos modelos..."
 - **Análise:** ferramenta de geração de tabelas por modelo já existe no
-  `tests/relatorio_resultados.py` ("Tabela MAE/MSE/R2/loss por modelo +
+  `reports/src/relatorio_resultados.py` ("Tabela MAE/MSE/R2/loss por modelo +
   baselines"), e os dados vivem em:
   - `data/results/report_8020/evaluation.json` — por modelo: `params`
     (nº de parâmetros), `loss`, `size_mb`, tempos (`timing`);
@@ -358,7 +358,7 @@ arquivos `.tex`. Toda localização inferida está marcada com
     - `data/results/report_8020_mseloss/evaluation.json`: os **4 com
       `mse`** (ablação).
   - O script de treino lê o loss dos hiperparâmetros
-    (`scripts/lidar_7525_train.py:122`: `wrapper.loss =
+    (`scripts/experiments/lidar_7525_train.py:122`: `wrapper.loss =
     hyperparameters.get("loss", "mse")`).
 - **Ação [CRÍTICO]:** corrigir o parágrafo conforme a rodada canônica
   escolhida para o artigo (ver §4.2 abaixo — a escolha da rodada é o
@@ -393,14 +393,14 @@ arquivos `.tex`. Toda localização inferida está marcada com
   teste estatístico... teste de Diebold–Mariano (DM), complementado por
   bootstrap em blocos..."
 - **Análise [RESPOSTA]:** **já está implementado no repositório** —
-  `tests/relatorio_resultados.py` (`diebold_mariano_loss_diff`,
+  `reports/src/relatorio_resultados.py` (`diebold_mariano_loss_diff`,
   ~linha 898; comparação em pares com α, agregada e por horizonte) e
   resultado salvo em `data/results/report_8020/mcs.json`. Falta
   **usar** no artigo: parágrafo no §Avaliação descrevendo o teste +
   tabela/valores-p no §Resultados.
 - **Ação [GUIA]:**
   1. Rodar (sem `--no-baselines` para incluir ARIMA/RF/Persistência):
-     `python tests/relatorio_resultados.py --models-dir
+     `python reports/src/relatorio_resultados.py --models-dir
      pipeline/tmp/trained_8020 --out-dir data/results/report_8020`
   2. Ler os pares/p-valores em `data/results/report_8020/mcs.json` e
      reportar no artigo (ex.: "diferença significativa a 5% entre X e
@@ -461,7 +461,7 @@ arquivos `.tex`. Toda localização inferida está marcada com
     Tabela 1** (TCN-Bi melhor DL). Figura e tabela no PDF atual vêm de
     **rodadas de treino diferentes** — revisor externo pega.
 - **Ação:** escolher **uma** rodada canônica e recalcular **tudo** com
-  um único script (`tests/relatorio_resultados.py` já calcula DL +
+  um único script (`reports/src/relatorio_resultados.py` já calcula DL +
   baselines nas mesmas origens e gera exatamente as duas tabelas do
   artigo — agregado e h=36 — além do DM): atualizar Tabela 1, Tabela 2
   (h=36), heatmap, claims do texto e Resumo (R² 0,502/0,416). Se for
@@ -475,7 +475,7 @@ arquivos `.tex`. Toda localização inferida está marcada com
 - **Comentário (Vanessa):** "Consegue aumentar a fonte dessa figura? Tá
   muito pequeno. Difícil de ler."
 - **Ação:** regenerar o heatmap com fontes maiores — no gerador
-  (`tests/relatorio_resultados.py`, imagem
+  (`reports/src/relatorio_resultados.py`, imagem
   `06_heatmap_mse_horizonte.png`): aumentar `fontsize` dos ticks/labels
   (~13–16) ou reduzir o `figsize` para que a fonte cresça
   relativa à figura; depois re-sincronizar
@@ -629,7 +629,7 @@ Pendências de estilo do mesmo parágrafo (subjetivas, do doc anterior
 
 | Pendência | Fonte |
 |---|---|
-| Tabelas de métricas (agregado e h=36) consistentes | `tests/relatorio_resultados.py --models-dir pipeline/tmp/trained_8020 --out-dir data/results/report_8020` (+baselines sem `--no-baselines`) |
+| Tabelas de métricas (agregado e h=36) consistentes | `reports/src/relatorio_resultados.py --models-dir pipeline/tmp/trained_8020 --out-dir data/results/report_8020` (+baselines sem `--no-baselines`) |
 | Hiperparâmetros por modelo | `data/results/optuna/<modelo>/trials.csv`; `evaluation.json` (params/loss/size) |
 | Tempo de treino | `data/results/*/summary.json` (`training_time_sec`), `training_history.json` |
 | Teste DM / pares | `data/results/report_8020/mcs.json` |
@@ -655,7 +655,7 @@ reproduz nenhuma das duas exatamente — escolher a canônica e recalcular.
    bloco ≈ raiz cúbica de N, ou Politis–White) para construir a
    distribuição nula da média e o p-valor.
 3. **Prática neste repo:** tudo já implementado em
-   `tests/relatorio_resultados.py` (`diebold_mariano_loss_diff` —
+   `reports/src/relatorio_resultados.py` (`diebold_mariano_loss_diff` —
    agregado e por horizonte, com α configurável); saída em `mcs.json`.
    Para o artigo: 1 parágrafo no §Avaliação (definição + por que blocos)
    + tabela de p-valores dos pares relevantes (TCN×LSTM, TCN-Bi×LSTM-Bi,

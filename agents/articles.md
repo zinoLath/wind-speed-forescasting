@@ -94,7 +94,7 @@ python scripts/articles_sync.py push-all --auto   # best-effort (hook)
   `disp*`).
 - **Figuras**: `articles/sbr/sync.json` (heatmaps/split ← relatório da
   rodada canônica); regeneração das imagens em
-  `tests/relatorio_resultados.py`.
+  `reports/src/relatorio_resultados.py`.
 - **Teste DM/p-valores**: regeneração da canônica gera `mcs.json`;
   análise ajustada em `reports/lidar/8020-itildeq-metodos/`.
 - Integração de tudo no texto: skill **sbsr-integrate** (verifica

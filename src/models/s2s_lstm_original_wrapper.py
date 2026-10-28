@@ -76,7 +76,8 @@ class S2SLSTMOriginalWrapper(Seq2SeqWrapper):
 
         self.model = Model([encoder_inputs, decoder_inputs], decoder_outputs_final)
         self.model.compile(
-            optimizer=Adam(learning_rate=learning_rate), loss=loss, metrics=['mae']
+            optimizer=Adam(learning_rate=learning_rate,
+                                clipnorm=getattr(self, "clipnorm", 1.0)), loss=loss, metrics=['mae']
         )
 
         return self.model

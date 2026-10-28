@@ -5,7 +5,7 @@ ANTIGOS (trained_8020) contra os do Optuna round 4 (trained_8020_optuna),
 na mesma grade de origens (1203) do split 80/20. O heatmap é o análogo do
 "erro por horizonte", mas mostrando DM(modelo_antigo, modelo_hpo).
 
-Fonte: data/results/dm_vs_hpo/ (gerado por tests/dm_vs_hpo.py).
+Fonte: data/results/dm_vs_hpo/ (gerado por studies/dm_vs_hpo.py).
 
     python reports/resultados/dm-hpo/report.py
 """
@@ -31,7 +31,7 @@ def build(ctx):  # noqa: ARG001
         return C.page_header(
             "DM por horizonte — antigo × Optuna",
             "Sem dados.") + C.note(
-            "Rode <code>python tests/dm_vs_hpo.py</code> (GPU, ~10 min) "
+            "Rode <code>python studies/dm_vs_hpo.py</code> (GPU, ~10 min) "
             "para gerar <code>dm_matrix.json</code> e o heatmap.")
     payload = json.loads(data_path.read_text(encoding="utf-8"))
     n = next(iter(payload["pairs"].values()))["n_origins"]
@@ -95,7 +95,7 @@ REPORT = {
     "description": "Heatmap Diebold–Mariano por horizonte comparando os HP "
                    "antigos (trained_8020) com os do Optuna round 4 "
                    "(trained_8020_optuna).",
-    "regenerate": [".venv/bin/python", "tests/dm_vs_hpo.py"],
+    "regenerate": [".venv/bin/python", "studies/dm_vs_hpo.py"],
     "retrain": None,
     "source_dir": "data/results/dm_vs_hpo",
     "info": [

@@ -28,6 +28,8 @@ import json
 import sys
 from pathlib import Path
 
+import pandas as pd
+
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
@@ -64,7 +66,7 @@ def fmt_num(x, nd: int, comma: bool) -> str:
 
 
 def load_rr():
-    path = PROJECT_ROOT / "tests" / "relatorio_resultados.py"
+    path = PROJECT_ROOT / "reports" / "src" / "relatorio_resultados.py"
     spec = importlib.util.spec_from_file_location("relatorio_resultados", path)
     mod = importlib.util.module_from_spec(spec)
     sys.modules["relatorio_resultados"] = mod
@@ -145,8 +147,12 @@ def build_tables(args) -> str:
         h36_rows.append((display_name(entry.get("short", name)), h))
 
     if not args.no_baselines:
+        base = None
         if BASELINES_JSON.is_file():
             base = json.loads(BASELINES_JSON.read_text(encoding="utf-8"))
+        if getattr(args, "trim_boundary_origins", 0):
+            base = trimmed_baseline_metrics(base, args.trim_boundary_origins)
+        if base:
             for key in BASELINE_KEYS:
                 blk = base.get(key)
                 if not blk:
@@ -159,12 +165,44 @@ def build_tables(args) -> str:
             print(f"aviso: baselines ausentes ({BASELINES_JSON}); use --no-baselines "
                   "para silenciar", file=sys.stderr)
 
+    def check_implied_variance(rows, label):
+        """Vigia da variância implícita: MSE/(1−R²) tem de ser único.
+
+        MSE e R² de fontes diferentes (rodadas misturadas) implicam
+        variâncias distintas do alvo — a inconsistência clássica das
+        tabelas do artigo. Avisa (e aborta com --strict) quando as linhas
+        divergem além da tolerância.
+        """
+        if args.no_variance_guard:
+            return
+        implied = []
+        for nome, m in rows:
+            if m.get("r2") is None or m.get("mse") is None or m["r2"] >= 1:
+                continue
+            implied.append((nome, m["mse"] / (1.0 - m["r2"])))
+        if len(implied) < 2:
+            return
+        vals = [v for _, v in implied]
+        lo, hi = min(vals), max(vals)
+        spread = (hi - lo) / lo if lo else 0.0
+        if spread > 0.03:
+            detail = ", ".join(f"{n}={v:.3f}" for n, v in implied)
+            msg = (f"[vIGIA variância implícita] {label}: MSE/(1−R²) diverge "
+                   f"{spread*100:.1f}% entre linhas — tabela mistura fontes! "
+                   f"({detail})")
+            if args.strict:
+                sys.exit(msg)
+            print(f"AVISO: {msg}", file=sys.stderr)
+
     def to_cells(rows):
         return [(nome, fmt_num(m["r2"], args.nd, comma),
                  fmt_num(m["mse"], args.nd, comma),
                  fmt_num(m["mae"], args.nd, comma),
                  fmt_num(m["rmse"], args.nd, comma))
                 for nome, m in sorted(rows, key=lambda r: r[1]["r2"], reverse=True)]
+
+    check_implied_variance(all_rows, "tab:error_all")
+    check_implied_variance(h36_rows, "tab:error_h36")
 
     body_all = latexfmt.tabular_body(COLUMNS, to_cells(all_rows), args.format,
                                      align="c" * len(COLUMNS))
@@ -180,8 +218,49 @@ def build_tables(args) -> str:
     header = (f"% Gerado por scripts/sbsr_tables.py em "
               f"{datetime.date.today().isoformat()} — rodada: "
               f"{round_dir.resolve().relative_to(PROJECT_ROOT)}/evaluation.json"
-              + ("" if args.no_baselines else " + baselines (arima_rf/metrics.json)"))
+              + ("" if args.no_baselines else " + baselines (arima_rf/metrics.json")
+              + (f"; -{args.trim_boundary_origins} origens de fronteira)"
+                 if getattr(args, "trim_boundary_origins", 0) else
+                 (")" if not args.no_baselines else "")))
     return "\n\n".join([header, table_all, table_h36]) + "\n"
+
+
+def trimmed_baseline_metrics(base: dict | None, n: int) -> dict:
+    """Baselines recomputados na grade sem as primeiras *n* origens.
+
+    Espelha o corte de ``reports/src/relatorio_resultados.py``: descarta as
+    primeiras *n* origens do ``predictions_long.csv`` (janela de entrada
+    cruza a fronteira treino/teste) e recalcula as métricas para todos os
+    métodos ficarem na mesma grade.
+    """
+    csv_path = BASELINES_JSON.parent / "predictions_long.csv"
+    if not csv_path.is_file():
+        sys.exit(f"predictions_long.csv ausente ({csv_path}); impossível "
+                 "aplicar --trim-boundary-origins")
+    df = pd.read_csv(csv_path, parse_dates=["origin", "timestamp"])
+    for col in ("origin", "timestamp"):
+        df[col] = df[col].dt.round("min")
+    origins = sorted(df["origin"].unique())
+    if len(origins) <= n:
+        sys.exit(f"grade tem {len(origins)} origens <= n={n}")
+    cut = origins[n - 1]
+    df = df[df["origin"] > cut]
+    print(f"[trim-boundary] baselines: {len(origins)} -> "
+          f"{df['origin'].nunique()} origens (descartadas as primeiras "
+          f"{n}, ate {cut})")
+    out = json.loads(json.dumps(base)) if base else {}
+    for key in BASELINE_KEYS:
+        if key not in df.columns:
+            continue
+        m_all = common.compute_metrics(df["actual"], df[key])
+        h_max = int(df["horizon"].max())
+        roll = df[df["horizon"] == h_max]
+        m_roll = common.compute_metrics(roll["actual"], roll[key])
+        blk = out.get(key, {})
+        blk["all_horizons"] = m_all
+        blk["rolling"] = m_roll
+        out[key] = blk
+    return out
 
 
 def models_dir_for(round_dir: Path) -> Path:
@@ -200,6 +279,15 @@ def main() -> None:
                     help="vírgula é o padrão dos templates sbsr/steam")
     ap.add_argument("--nd", type=int, default=3, help="casas decimais (default: 3)")
     ap.add_argument("--no-baselines", action="store_true")
+    ap.add_argument("--strict", action="store_true",
+                    help="aborta (em vez de só avisar) se a variância "
+                         "implícita MSE/(1−R²) divergir entre linhas")
+    ap.add_argument("--no-variance-guard", action="store_true",
+                    help="desliga o vigia de variância implícita")
+    ap.add_argument("--trim-boundary-origins", type=int, default=0,
+                    help="descarta as primeiras N origens do teste e "
+                         "recomputa os baselines na grade cortada "
+                         "(espelha reports/src/relatorio_resultados.py)")
     ap.add_argument("--placement", default="h")
     ap.add_argument("--label-all", default=DEFAULTS["all"]["label"])
     ap.add_argument("--caption-all", default=DEFAULTS["all"]["caption"])

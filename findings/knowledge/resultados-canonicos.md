@@ -1,7 +1,7 @@
 ---
 title: Resultados canônicos das rodadas
 area: resultados
-updated: 2026-10-20
+updated: 2026-10-22
 ---
 
 # Resultados canônicos das rodadas
@@ -12,7 +12,7 @@ Números de referência (R² agregado `all`) — sempre checar o
 ## RODADA CANÔNICA ESCOLHIDA (20/10/2026): `report_8020_itildeq` (mista)
 
 TCN/TCN-Bi com HPs canônicos + dilatações estáticas C′ + perda **MSE**;
-LSTM/LSTM-Bi com HPs do HPO 80/20 + perda **ITILDE-Q**. **Treino executado em 21/10 com HPs da round5 e REVERTIDO**: a transferência falhou nos TCNs (0,52→0,29; campos estruturais fora do espaço da busca — `context_pooling`/`dilation_rate` — caíram p/ defaults + split de HPO 72/8/20 ≠ 80/20). Canônica em produção = execução 16/10 restaurada (backup `trained_8020_itildeq_backup_202610211004`; a rodada com HPs round5 NÃO substitui a canônica: virou rodada própria de referência `report_8020_round5` (modelos `trained_8020_round5`, relatório `reports/lidar/8020-round5/`, status não-canônico)). Registro original: treino pendente — retreino via `scripts/lidar_8020_itildeq_train.py`
+LSTM/LSTM-Bi com HPs do HPO 80/20 + perda **ITILDE-Q**. **Treino executado em 21/10 com HPs da round5 e REVERTIDO**: a transferência falhou nos TCNs (0,52→0,29; campos estruturais fora do espaço da busca — `context_pooling`/`dilation_rate` — caíram p/ defaults + split de HPO 72/8/20 ≠ 80/20). Canônica em produção = execução 16/10 restaurada (backup `trained_8020_itildeq_backup_202610211004`; a rodada com HPs round5 NÃO substitui a canônica: virou rodada própria de referência `report_8020_round5` (modelos `trained_8020_round5`, relatório `reports/lidar/8020-round5/`, status não-canônico)). Registro original: treino pendente — retreino via `scripts/experiments/lidar_8020_itildeq_train.py`
 (fluxo completo no playbook `retreino-lidar.md` / skill `lidar-retrain`;
 regeneração SEM `--no-baselines` ⇒ DL e baselines na mesma grade de
 origens, var implícita única). Números da execução anterior (16/10):
@@ -30,6 +30,18 @@ origens, var implícita única). Números da execução anterior (16/10):
   data/results/report_8020_itildeq`.
 - Figuras do artigo: `articles/sbr/sync.json` já aponta para
   `data/results/report_8020_itildeq/images/`.
+
+## report_8020_featurex (rodada de ESTUDO — 67 canais, MSE puro — 21/10/2026)
+
+Avaliação completa (rolling + filtro de observadas, mesma grade dos
+baselines, `data/results/report_8020_featurex/evaluation.json`):
+TCN **0,494** / LSTM **0,485** / TCN-Bi 0,401 / LSTM-Bi 0,379 — vs
+ARIMA 0,508 / RF 0,418 / Pers 0,388. DM 10 pares 0 significativos;
+MCS α=0,10 só a TCN. **NÃO canônica** (não promoveu) — análise no
+relatório `reports/lidar/8020-featurex`. Lineup híbrido
+(`report_8020_hybrid`: TCN/TCN-Bi canônicas + LSTMs featurex): MSE TCN
+1,301 < ARIMA 1,329 < TCN-Bi 1,379 < LSTM 1,393; DM 0 significativos,
+MCS manteve todos os 7.
 
 ## report_8020 (rodada ponderada — ANTERIOR, mantida como ablação)
 

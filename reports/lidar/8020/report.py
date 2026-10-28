@@ -1,6 +1,6 @@
 """Relatório de resultados — protocolo de reamostragem 80/20 (LiDAR).
 
-Split 80/20 sem validação, 60 épocas fixas, seed 42 (scripts/lidar_7525_train.py
+Split 80/20 sem validação, 60 épocas fixas, seed 42 (scripts/experiments/lidar_7525_train.py
 --train-ratio 0.80 -> pipeline/tmp/trained_8020). Página padronizada a partir
 de data/results/report_8020 (evaluation.json + images/).
 
@@ -28,13 +28,13 @@ REPORT, build = report_module(
              "10 min.",
     badges=("80/20", "60 épocas", "seed 42", "sem validação"),
     protocol_note="Modelos treinados em <code>pipeline/tmp/trained_8020</code> "
-                  "por <code>scripts/lidar_7525_train.py --train-ratio 0.80</"
+                  "por <code>scripts/experiments/lidar_7525_train.py --train-ratio 0.80</"
                   "code>. Avaliação gerada por "
-                  "<code>tests/relatorio_resultados.py</code>.",
-    regenerate=[".venv/bin/python", "tests/relatorio_resultados.py",
+                  "<code>reports/src/relatorio_resultados.py</code>.",
+    regenerate=[".venv/bin/python", "reports/src/relatorio_resultados.py",
                 "--models-dir", "pipeline/tmp/trained_8020",
                 "--out-dir", "data/results/report_8020", "--no-baselines"],
-    retrain=[".venv/bin/python", "scripts/lidar_7525_train.py",
+    retrain=[".venv/bin/python", "scripts/experiments/lidar_7525_train.py",
              "--train-ratio", "0.80"],
     info=[("Protocolo", "80/20 sem validação"), ("Épocas", "60 fixas"),
           ("Seed", "42"), ("Janela", "72 → 36 passos (10 min)"),

@@ -136,7 +136,7 @@ def build(ctx):  # noqa: ARG001
         "(shape-aware, melhor no report alinhado); TCN/&shy;TCN-Bi → "
         "<strong>MSE puro</strong> (ITILDE-Q não ajudou as TCN; MSE empatou "
         "com a hwmse). Mapa em <code>LOSS_BY_WRAPPER</code> "
-        "(<code>scripts/lidar_7525_train.py</code>); <code>--legacy-hwmse</code> "
+        "(<code>scripts/experiments/lidar_7525_train.py</code>); <code>--legacy-hwmse</code> "
         "volta ao default antigo.</li>"
         "<li><strong>Dilatações</strong>: base estática; sequências "
         "fixas com lag sazonal 36 direto (seção própria abaixo); busca "
@@ -337,7 +337,7 @@ def build(ctx):  # noqa: ARG001
         "reiniciado retoma de onde parou; snapshot do progresso no output "
         "a cada 10 min.</li>"
         "<li>Acompanhamento: esta página (seção abaixo) + "
-        "<code>python scripts/colab_monitor.py --watch 60</code> para o "
+        "<code>python scripts/dist/colab_monitor.py --watch 60</code> para o "
         "estado dos kernels.</li>"
         "</ul></div>",
         sec_id="workers"))

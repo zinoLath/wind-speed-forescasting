@@ -1,7 +1,7 @@
 """Relatório de resultados — 80/20 com loss MSE pura (ablação da loss).
 
 Mesmo protocolo 80/20 da reamostragem canônica, mas com MSE pura em vez da
-horizon-weighted (scripts/lidar_8020_mseloss_train.py -> trained_8020_mseloss).
+horizon-weighted (scripts/experiments/lidar_8020_mseloss_train.py -> trained_8020_mseloss).
 
     python reports/lidar/8020-mseloss/report.py
 """
@@ -24,11 +24,11 @@ REPORT, build = report_module(
              "pura em vez da horizon-weighted — isola o efeito da função de "
              "perda.",
     badges=("80/20", "ablação loss", "MSE pura"),
-    regenerate=[".venv/bin/python", "tests/relatorio_resultados.py",
+    regenerate=[".venv/bin/python", "reports/src/relatorio_resultados.py",
                 "--models-dir", "pipeline/tmp/trained_8020_mseloss",
                 "--out-dir", "data/results/report_8020_mseloss",
                 "--no-baselines"],
-    retrain=[".venv/bin/python", "scripts/lidar_8020_mseloss_train.py"],
+    retrain=[".venv/bin/python", "scripts/experiments/lidar_8020_mseloss_train.py"],
     info=[("Protocolo", "80/20 sem validação"), ("Loss", "MSE pura (ablação)"),
           ("Épocas", "60 fixas"), ("Seed", "42"),
           ("Modelos", "trained_8020_mseloss")],

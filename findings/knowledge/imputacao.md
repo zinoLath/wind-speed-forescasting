@@ -20,9 +20,9 @@ protocolos walk-forward e WFO.
   completo; métricas MAE/RMSE/viés/R² por coluna e por comprimento.
 - Dataset imputado carrega coluna flag `imputed` → métricas podem
   decompor-se em amostras observadas vs imputadas.
-- Linha LightGBM em produção (WFO): `scripts/wfo_lightgbm_*.py` +
+- Linha LightGBM em produção (WFO): `scripts/experiments/wfo_lightgbm_*.py` +
   relatórios `reports/imputacao/wfo-lightgbm{,-2m}` (2 m = série de 2 m).
-- Comparativos detalhados: `tests/compare_rf_lgbm_impute_detailed.py --optuna`
+- Comparativos detalhados: `studies/compare_rf_lgbm_impute_detailed.py --optuna`
   (imputer tunado por Optuna); relatórios `reports/imputacao/wfo-benchmarks`
   e `wfo-estudo-detalhado`.
 

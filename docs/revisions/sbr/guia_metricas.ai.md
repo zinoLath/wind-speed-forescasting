@@ -2,7 +2,7 @@
 
 > **Autoria:** IA (opencode/GLM-5.3), 14/10/2026. Acompanha os resultados
 > calculados em `data/results/metodos_complementares/` (script:
-> `tests/metodos_complementares.py`; rodada: `trained_8020`, 1196 origens
+> `studies/metodos_complementares.py`; rodada: `trained_8020`, 1196 origens
 > comuns × 36 horizontes = 43.056 amostras avaliadas, α=0,05).
 >
 > **Política de fontes:** todo link/DOI abaixo foi **verificado por
@@ -270,8 +270,8 @@ leptocúrticos e enviesados (JB p≈0), reforçando o uso de bootstrap
    `00:39:59.999998`) e não casam com a grade regularizada do dataset;
    qualquer análise que alinhe DL×baselines por `origin` colapsa para
    ~163. Correção: `origin.dt.round("min")` antes de alinhar (aplicado
-   em `tests/metodos_complementares.py`; **falta aplicar em
-   `tests/relatorio_resultados.py`/`src`**).
+   em `studies/metodos_complementares.py`; **falta aplicar em
+   `reports/src/relatorio_resultados.py`/`src`**).
 2. **Trajetórias incompletas:** o filtro de timestamps observados deixa
    ~18% das origens sem algum horizonte; este relatório usa só as 1196
    origens completas (43.056 amostras).

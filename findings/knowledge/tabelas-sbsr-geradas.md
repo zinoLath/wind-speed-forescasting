@@ -30,13 +30,23 @@ python scripts/sbsr_tables.py                                    # stdout sbsr
 python scripts/sbsr_tables.py --out reports/lidar/8020/tabelas_sbsr.tex
 python scripts/sbsr_tables.py --format steam | --format generic
 python scripts/sbsr_tables.py --round-dir data/results/report_<rodada>
+python scripts/sbsr_tables.py --trim-boundary-origins 72         # baselines na grade cortada
 python scripts/sbsr_tables.py --no-baselines --decimal point --nd 2
+python scripts/sbsr_tables.py --strict                           # aborta se variância implícita divergir
 # labels/captions sobrescrevíveis: --label-all/--caption-all/--label-h36/--caption-h36
 ```
 
+## Vigia de variância implícita (23/10/2026)
+
+`check_implied_variance` roda sobre as duas tabelas: se `MSE/(1−R²)`
+divergir >3% entre linhas, avisa (ou **aborta com `--strict`**) — é o
+safeguard contra o problema das tabelas misturando rodadas
+(`variancia-implicita.md`). Testado: flagou TCN-Bi injetada com var 2,70
+vs 2,78 do resto. Desligável com `--no-variance-guard`.
+
 ## Persistência de per_horizon
 
-- `tests/relatorio_resultados.py` agora grava `per_horizon`/`per_horizon_den`
+- `reports/src/relatorio_resultados.py` agora grava `per_horizon`/`per_horizon_den`
   (records) em cada modelo do `evaluation.json` — rodadas novas já nascem
   completas.
 - Rodadas antigas sem `per_horizon`: o script **recomputa dos pesos**
@@ -49,5 +59,5 @@ python scripts/sbsr_tables.py --no-baselines --decimal point --nd 2
 
 - `scripts/sbsr_tables.py`; `reports/src/latexfmt.py`;
   `data/results/baselines/arima_rf/metrics.json`;
-  `tests/relatorio_resultados.py` (persistência per_horizon);
+  `reports/src/relatorio_resultados.py` (persistência per_horizon);
   `articles/sbr/LaTeX_Template_SBSR_Portugues/04_Resultados.tex` (convenção).
