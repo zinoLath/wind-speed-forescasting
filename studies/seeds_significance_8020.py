@@ -15,7 +15,7 @@ Responde, com os dados já em disco:
 
 Não precisa de GPU:
 
-    python tests/seeds_significance_8020.py \
+    python studies/seeds_significance_8020.py \
         --seeds-dir data/results/itildeq_seeds_8020 \
         --db data/predictions.db --run-id 1 \
         --out-dir data/results/itildeq_seeds_8020/significance
@@ -29,7 +29,7 @@ from itertools import combinations
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-for path in (PROJECT_ROOT, PROJECT_ROOT / "tests"):
+for path in (PROJECT_ROOT,):
     if str(path) not in sys.path:
         sys.path.insert(0, str(path))
 

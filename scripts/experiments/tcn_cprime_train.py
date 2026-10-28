@@ -9,8 +9,8 @@ de denoise (ws100, nível 2), loss horizon-weighted, 60 épocas, seed 42, split
 Grava também as profundidades efetivas (``*_dil_depth``) no model.json para
 que a remontagem nos relatórios restaure as dilatações (apply_static_dilations).
 
-    python scripts/tcn_cprime_train.py
-    python tests/dm_vs_hpo.py ...   # já compara tcn_cprime? (ver dm_dilations)
+    python scripts/experiments/tcn_cprime_train.py
+    python studies/dm_vs_hpo.py ...   # já compara tcn_cprime? (ver dm_dilations)
 """
 
 import argparse
@@ -19,7 +19,7 @@ import sys
 import time
 from pathlib import Path
 
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 

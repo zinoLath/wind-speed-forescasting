@@ -40,7 +40,7 @@ fi
 MSG="experimento $TAG finalizado"
 [ -n "$RESULT" ] && MSG="$MSG | $RESULT"
 
-"$ROOT/.venv/bin/python" "$ROOT/scripts/wfo_notify.py" \
+"$ROOT/.venv/bin/python" "$ROOT/scripts/experiments/wfo_notify.py" \
     --title "Wind: $TAG" --priority high --tags checkered_flag --desktop \
     "$MSG" >/dev/null 2>&1
 

@@ -16,7 +16,7 @@ each wrapper is trained from scratch with the hyperparameters stored in its
 ``model.json``, then evaluated under both protocols on the held-out test split.
 
 Usage:
-    python tests/compare_rolling_protocols_keras.py [--epochs 100]
+    python studies/compare_rolling_protocols_keras.py [--epochs 100]
 """
 
 import argparse

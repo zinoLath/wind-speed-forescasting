@@ -4,7 +4,7 @@ Trains the same wrapper on both targets with the same seed and compares
 honest metrics computed against the RAW wind speed on the held-out test
 split, so the smoothing effect is measured rather than assumed.
 
-Run from the project root:  python tests/ab_raw_vs_wavelet.py
+Run from the project root:  python studies/ab_raw_vs_wavelet.py
 """
 
 import argparse

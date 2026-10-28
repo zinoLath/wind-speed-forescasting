@@ -11,7 +11,7 @@ Saida em data/results/wfo_lightgbm/rf_baseline/ no mesmo formato dos modelos
 com as mesmas flags de imputacao — o relatorio consome como pseudo-modelo.
 
 Usage:
-    python scripts/wfo_rf_baseline.py
+    python scripts/experiments/wfo_rf_baseline.py
 """
 
 import argparse
@@ -20,7 +20,7 @@ import sys
 import time
 from pathlib import Path
 
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 

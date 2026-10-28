@@ -12,7 +12,7 @@ metrics.json), com as mesmas colunas de flag de imputacao — o relatorio
 consumo como um pseudo-modelo.
 
 Usage:
-    python scripts/wfo_arima_baseline.py [--wrappers arima]  # idempotente
+    python scripts/experiments/wfo_arima_baseline.py [--wrappers arima]  # idempotente
 """
 
 import argparse
@@ -21,7 +21,7 @@ import sys
 import time
 from pathlib import Path
 
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 

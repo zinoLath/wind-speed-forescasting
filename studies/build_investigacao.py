@@ -4,7 +4,7 @@ Coleta os metrics.json de todas as variantes trained_compare_*, produz
 gráficos (PNG) e monta o relatório do hub:
     reports/resultados/investigacao/report.html
 
-Uso: python tests/build_investigacao.py
+Uso: python studies/build_investigacao.py
 """
 import json
 from pathlib import Path

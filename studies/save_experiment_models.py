@@ -1,7 +1,7 @@
 """Salva os modelos dos experimentos da sessão em models/experiments/<condição>/.
 
 Cada entrada mantém model.keras + model.json (fonte da verdade das features).
-Uso: python tests/save_experiment_models.py
+Uso: python studies/save_experiment_models.py
 """
 import json
 import shutil

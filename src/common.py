@@ -159,6 +159,10 @@ WRAPPERS = {
     "lstm_original": ("src.models.s2s_lstm_original_wrapper", "S2SLSTMOriginalWrapper"),
     "lstm": ("src.models.s2s_lstm_wrapper", "S2SLSTMWrapper"),
     "lstm_bi": ("src.models.s2s_lstm_bi_wrapper", "S2SLSTMBidirectionalWrapper"),
+    "lstm_mean": ("src.models.s2s_lstm_mean_wrapper", "Seq2SeqLSTMMean"),
+    "lstm_detail": ("src.models.s2s_lstm_detail_wrapper", "Seq2SeqLSTMDetail"),
+    "tcn_mean": ("src.models.s2s_tcn_mean_wrapper", "Seq2SeqTCNMean"),
+    "tcn_detail": ("src.models.s2s_tcn_detail_wrapper", "Seq2SeqTCNDetail"),
     "gru": ("src.models.s2s_gru_wrapper", "S2SGRUWrapper"),
     "gru_bi": ("src.models.s2s_gru_bi_wrapper", "S2SGRUBidirectionalWrapper"),
     "lstm_cnn": ("src.models.s2s_lstm_cnn_wrapper", "S2SLSTMCNNWrapper"),
@@ -391,6 +395,54 @@ DEFAULT_HYPERPARAMETERS = {
         "lstm_units": 64,
         "encoder_dropout_rate": 0.05,
         "decoder_dropout_rate": 0.15,
+        "loss": "mse",
+        "lr_schedule": "constant",
+        "weight_decay": 0.0,
+    },
+    "lstm_mean": {
+        "learning_rate": 0.001249176597990083,
+        "lstm_units": 128,
+        "encoder_dropout_rate": 0.1,
+        "decoder_dropout_rate": 0.1,
+        "loss": "mse",
+        "lr_schedule": "constant",
+        "weight_decay": 0.0,
+    },
+    "lstm_detail": {
+        "learning_rate": 0.001249176597990083,
+        "lstm_units": 128,
+        "encoder_dropout_rate": 0.1,
+        "decoder_dropout_rate": 0.1,
+        "loss": "mse",
+        "lr_schedule": "constant",
+        "weight_decay": 0.0,
+    },
+    "tcn_mean": {
+        "learning_rate": 0.001249176597990083,
+        "filters": 64,
+        "encoder_kernel_size": 2,
+        "encoder_nb_stacks": 2,
+        "encoder_dropout_rate": 0.2,
+        "encoder_dilation_rate": 1,
+        "decoder_kernel_size": 2,
+        "decoder_nb_stacks": 1,
+        "decoder_dropout_rate": 0.0,
+        "decoder_dilation_rate": 1,
+        "loss": "mse",
+        "lr_schedule": "constant",
+        "weight_decay": 0.0,
+    },
+    "tcn_detail": {
+        "learning_rate": 0.001249176597990083,
+        "filters": 64,
+        "encoder_kernel_size": 2,
+        "encoder_nb_stacks": 2,
+        "encoder_dropout_rate": 0.2,
+        "encoder_dilation_rate": 1,
+        "decoder_kernel_size": 2,
+        "decoder_nb_stacks": 1,
+        "decoder_dropout_rate": 0.0,
+        "decoder_dilation_rate": 1,
         "loss": "mse",
         "lr_schedule": "constant",
         "weight_decay": 0.0,
@@ -821,6 +873,38 @@ def load_best_params(wrapper_key=None, params_file=None, wrapper_name=None):
         raise FileNotFoundError(f"No Optuna result found for wrapper '{wrapper_key or wrapper_name}'.")
     with open(path, encoding="utf-8") as handle:
         return path, json.load(handle)["best_params"]
+
+
+CANONICAL_HPARAMS_FILE = "pipeline/configs/canonical_hparams_8020_itildeq.json"
+CANONICAL_TRAINED_DIR = "pipeline/tmp/trained_8020_itildeq"
+
+
+def canonical_round_meta(wrapper_key, snapshot_file=None, trained_dir=None):
+    """Canonical hyperparameters of the frozen 8020-itildeq round.
+
+    The versioned snapshot in ``pipeline/configs/`` is the source of truth so
+    a fresh clone can retrain canonical rounds without the (gitignored)
+    trained artifacts. Falls back to ``trained_dir/<key>/model.json`` when the
+    snapshot does not cover the wrapper (returns the full model.json).
+
+    Returns a dict with at least ``hyperparameters``; ``loss``,
+    ``feature_keep`` and ``static_dilations`` when defined for the wrapper.
+    """
+    path = Path(resolve(snapshot_file or CANONICAL_HPARAMS_FILE))
+    key = str(wrapper_key)
+    if path.is_file():
+        with open(path, encoding="utf-8") as handle:
+            snapshot = json.load(handle)
+        if key in snapshot.get("wrappers", {}):
+            meta = dict(snapshot["wrappers"][key])
+            meta.setdefault("params_source_snapshot", str(path))
+            return meta
+    fallback = Path(resolve(trained_dir or CANONICAL_TRAINED_DIR)) / key / "model.json"
+    if fallback.is_file():
+        with open(fallback, encoding="utf-8") as handle:
+            return json.load(handle)
+    raise FileNotFoundError(
+        f"HPs canonicos indisponiveis para '{key}': nem {path} nem {fallback}")
 
 
 def resolve_hyperparameters(wrapper_key, section, config):

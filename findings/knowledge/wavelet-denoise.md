@@ -15,7 +15,7 @@ bruto — a suavização não pode inflar os resultados.
   (`σ = MAD/0.6745`, limiar `σ·√(2·ln N)`).
 - Implementação: `src/utils.py:wavelet_denoising()`.
 - A escolha foi validada por A/B alvo cru vs denoised
-  (`tests/ab_raw_vs_wavelet.py`; resultado em `docs/ab_target_denoise.md`).
+  (`studies/ab_raw_vs_wavelet.py`; resultado em `docs/ab_target_denoise.md`).
 
 ## Fontes
 

@@ -6,7 +6,7 @@ intocado), MedianPruner, estudo em sqlite (resume). A loss mse entra por
 patch de runtime nos simbolos do modulo do wrapper.
 
     source .venv/bin/activate && source scripts/tf_gpu_env.sh
-    python scripts/lidar_lstm_bi_hpo.py --trials 40
+    python scripts/experiments/lidar_lstm_bi_hpo.py --trials 40
 """
 
 import argparse
@@ -15,7 +15,7 @@ import sys
 import time
 from pathlib import Path
 
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 

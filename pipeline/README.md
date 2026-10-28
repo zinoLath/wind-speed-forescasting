@@ -14,9 +14,12 @@ podem ser executados em sequência com um único comando ou isoladamente.
 pipeline/
 ├── pipeline.py             # orquestrador: roda os estágios em sequência
 ├── pipeline.default.json   # valores padrão de todos os parâmetros
-├── pipeline.json           # configuração explícita do usuário
+├── pipeline.json           # config canônica versionada (default da pipeline)
+├── pipeline.local.json     # overlay local (gitignored; via config.py set)
+├── configs/                # HPs canônicos snapshotados (clone fresco)
+├── profiles/               # perfis de configuração salvos (gitignored)
 ├── common.py               # helpers compartilhados (GPU, dados, métricas, wrappers)
-├── config.py               # leitura/merge das configurações
+├── config.py               # leitura/merge das configurações + persistência local
 ├── step_optuna.py          # estágio 1: otimização de hiperparâmetros
 ├── step_train.py           # estágio 2: treinamento do melhor modelo
 ├── step_evaluate.py        # estágio 3: avaliação do modelo salvo
@@ -40,10 +43,28 @@ src/impute/
 
 ## Configuração
 
-Toda a configuração fica em `pipeline/pipeline.json` (o arquivo explícito do
-usuário) e `pipeline/pipeline.default.json` (os padrões). O `pipeline.json` é
-sobreposto ao default, então pode declarar apenas o que mudar. Se o arquivo do
-usuário não existir, apenas os padrões são usados.
+Três camadas, na precedência (a última vence):
+
+1. `pipeline/pipeline.default.json` — os padrões;
+2. `pipeline/pipeline.json` — o **canônico versionado** (reflete a rodada
+   canônica do artigo; nunca é editado por experimento);
+3. `pipeline/pipeline.local.json` — **overlay local** (gitignored),
+   gerenciado por `python pipeline/config.py` — é onde vivem ajustes de
+   rodada/ambiente. Perfis reutilizáveis ficam em `pipeline/profiles/`.
+
+```bash
+python pipeline/config.py show                 # config resolvida (com overlay)
+python pipeline/config.py set train.epochs=5   # grava overlay local
+python pipeline/config.py unset train.epochs   # remove uma chave do overlay
+python pipeline/config.py diff                 # o que o local sobrepõe ao canônico
+python pipeline/config.py profile-save NAME    # salva o overlay como perfil
+python pipeline/config.py profile-use NAME     # ativa um perfil salvo
+python pipeline/config.py reset                # apaga o overlay → volta ao canônico
+```
+
+Um `--config` explícito (`pipeline.py --config ...`) **ignora o overlay
+local** por design: rodadas nomeadas têm precedência determinística. Sem
+o arquivo do usuário, apenas os padrões são usados.
 
 Os caminhos (`paths`) são relativos à raiz do projeto.
 
@@ -65,6 +86,15 @@ Exemplo — trocar a seed de tudo e a paciência apenas do walk-forward:
   "walkforward": {"patience": 20}
 }
 ```
+
+### HPs canônicos versionados
+
+Os hiperparâmetros da rodada canônica 8020-itildeq (usados pelos
+treinadores `scripts/lidar_reval_*` e `scripts/lidar_8020_sbsr_*`) estão
+snapshotados em `pipeline/configs/canonical_hparams_8020_itildeq.json` —
+fonte de verdade em clone fresco, sem depender dos artefatos
+(gitignored) de `pipeline/tmp/trained_8020_itildeq/` (que continuam
+válidos como fallback: `src/common.py:canonical_round_meta`).
 
 ## Como executar
 
@@ -105,7 +135,7 @@ python pipeline/step_walkforward.py --config pipeline/pipeline.json
 
 A rodada distribuída de Optuna (`pipeline/pipeline.optuna_round2.json`,
 estudo `round2` com sqlite por wrapper em `pipeline/tmp/optuna_round2/`) é
-orquestrada por `scripts/colab_round2.py` e `scripts/colab_monitor.py` —
+orquestrada por `scripts/dist/colab_round2.py` e `scripts/dist/colab_monitor.py` —
 wrappers pesados em notebooks do Google Colab, leves na GPU local. O runbook
 completo (incluindo o playbook de erros) está na skill `optuna-colab`
 (`.opencode/skills/optuna-colab/SKILL.md`) e resumido no `AGENTS.md`.

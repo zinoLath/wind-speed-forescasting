@@ -11,6 +11,8 @@
   `from pipeline import ...` — senão `pipeline/pipeline.py` sombreia o
   pacote. Manter o bloco de bootstrap ao adicionar estágios. O mesmo vale
   para os `report.py` em `reports/` (bootstrap para a raiz do projeto).
+  Profundidade do `parents[n]`: raiz de `scripts/` e `studies/` = 1;
+  `scripts/experiments/`, `scripts/dist/` e `reports/src/` = 2.
 - **Estudos Optuna são persistidos em sqlite**
   (`pipeline/tmp/optuna/<name>/optuna.db`) e resumem com
   `load_if_exists=True`; apague o `.db` para recomeçar do zero.

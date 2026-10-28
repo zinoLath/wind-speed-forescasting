@@ -14,8 +14,8 @@ e --from-db regenera figuras/DM/MCS a partir das predições gravadas, sem GPU.
 Foco: lstm, lstm_bi, tcn, tcn_bi (série LiDAR, dataset.csv).
 
 Executar a partir da raiz do projeto:
-    python tests/relatorio_resultados.py
-    python tests/relatorio_resultados.py --from-db lidar/8020  # sem GPU
+    python reports/src/relatorio_resultados.py
+    python reports/src/relatorio_resultados.py --from-db lidar/8020  # sem GPU
 
 Saída:
     <out>/images/*.png
@@ -32,7 +32,7 @@ from collections import Counter
 from itertools import combinations
 from pathlib import Path
 
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
@@ -46,7 +46,7 @@ import pandas as pd
 from src import common, predictions_db
 from src.models.tcn_hp import apply_static_dilations
 from src.utils import diebold_mariano, diebold_mariano_loss_diff, \
-    model_confidence_set
+    model_confidence_set, adjust_pvalues
 
 DATA_FILE = PROJECT_ROOT / "data" / "dataset.csv"
 MODELS_DIR = PROJECT_ROOT / "pipeline" / "tmp" / "trained_compare"
@@ -67,7 +67,7 @@ BASELINE_STYLE = {
 
 
 def load_baselines():
-    """Métricas dos baselines estatísticos (geradas por tests/baseline_arima_rf.py)."""
+    """Métricas dos baselines estatísticos (geradas por studies/baseline_arima_rf.py)."""
     if not (BASELINES_DIR / "metrics.json").is_file():
         return None
     out = {"metrics": json.load(open(BASELINES_DIR / "metrics.json"))}
@@ -1185,17 +1185,19 @@ def compute_dm_horizon_matrix(recs, extras, base_preds=None,
     series = {}
     names = []
     labels = []
+    # rótulos curtos para as matrizes DM (nomes bidirecionais viram Bi*)
+    dm_short = {"LSTM Bidirectional": "BiLSTM", "TCN Bidirectional": "BiTCN"}
     for r in recs:
         if swap and r["key"] in swap:
             suffix, alt_df = swap[r["key"]]
             series[r["key"]] = error_wide(alt_df, "predicted")
             names.append(r["key"])
-            labels.append(r["short"] + suffix)
+            labels.append(dm_short.get(r["short"], r["short"]) + suffix)
         else:
             series[r["name"]] = error_wide(extras[r["name"]]["all_df"],
                                            "predicted")
             names.append(r["name"])
-            labels.append(r["short"])
+            labels.append(dm_short.get(r["short"], r["short"]))
     series["__persistence__"] = error_wide(
         extras[recs[0]["name"]]["all_df"], "persistence")
     if base_preds is not None:
@@ -1206,7 +1208,7 @@ def compute_dm_horizon_matrix(recs, extras, base_preds=None,
                        ("__persistence__", "Pers.")):
         if key in series:
             names.append(key)
-            labels.append(label)
+            labels.append(dm_short.get(label, label))
 
     matrices = {}
     for h in horizons:
@@ -1236,30 +1238,41 @@ DM_GRID_TITLES = {6: "h6 (1 h)", 12: "h12 (2 h)", 24: "h24 (4 h)", 36: "h36 (6 h
 
 
 def _dm_grid(dmx, key, cmap, vmin, vmax, cbar_label, fig_title, fname,
-             cell_text):
+             cell_text, sig_threshold=None):
     """Grade 2×2 compartilhada das matrizes DM: legenda à direita, ticks
-    com os nomes dos métodos em todos os painéis."""
+    com os nomes dos métodos em todos os painéis. Com ``sig_threshold``,
+    células abaixo do limiar (par validado) recebem contorno verde."""
+    from matplotlib.patches import Rectangle
+
     labels = dmx["labels"]
     k = len(labels)
-    fig, axes = plt.subplots(2, 2, figsize=(13.5, 11), layout="constrained")
+    fig, axes = plt.subplots(2, 2, figsize=(12.5, 10), layout="constrained")
     fig.get_layout_engine().set(w_pad=0.04, h_pad=0.04, wspace=0.04, hspace=0.07)
     for ax, h in zip(axes.ravel(), dmx["horizons"]):
         m = dmx["matrices"][h]
         im = ax.imshow(np.ma.masked_invalid(m[key]), aspect="equal", cmap=cmap,
                        vmin=vmin, vmax=vmax, interpolation="nearest")
-        ax.set_title(DM_GRID_TITLES.get(h, f"h{h}"), fontsize=14)
-        ax.set_yticks(range(k), labels, fontsize=11)
-        ax.set_xticks(range(k), labels, rotation=45, ha="right", fontsize=11)
+        ax.set_title(DM_GRID_TITLES.get(h, f"h{h}"), fontsize=16)
+        ax.set_yticks(range(k), labels, fontsize=13)
+        ax.set_xticks(range(k), labels, rotation=45, ha="right", fontsize=13)
         for i in range(k):
             for j in range(k):
                 if i == j or not np.isfinite(m[key][i, j]):
                     continue
                 ax.text(j, i, cell_text(m, i, j), ha="center", va="center",
-                        fontsize=9.5, color="black",
+                        fontsize=11, color="black",
                         bbox=dict(boxstyle="round,pad=0.15", fc="white",
                                   alpha=0.7, lw=0))
+        if sig_threshold is not None:
+            for i in range(k):
+                for j in range(k):
+                    if (i != j and np.isfinite(m[key][i, j])
+                            and m[key][i, j] < sig_threshold):
+                        ax.add_patch(Rectangle(
+                            (j - 0.5, i - 0.5), 1, 1, fill=False,
+                            edgecolor="#008a00", lw=2.8, zorder=4))
     cbar = fig.colorbar(im, ax=axes, pad=0.04, shrink=0.9)
-    cbar.set_label(cbar_label)
+    cbar.set_label(cbar_label, fontsize=12)
     fig.suptitle(fig_title)
     savefig(fig, fname)
 
@@ -1300,8 +1313,9 @@ def plot_dm_pvalue_matrix(dmx, fname="16b_significancia_dm_pvalor.png",
     _dm_grid(
         dmx, "p", "RdYlGn_r", 0.0, 0.10,
         "p-valor (verde < 0,05 = diferença significativa; escala até 0,10)",
-        suptitle or "p-valores do teste de Diebold–Mariano por horizonte",
-        fname, cell_text,
+        suptitle or ("p-valores do teste de Diebold–Mariano por horizonte "
+                     "(contorno verde: par validado, p < 0,05)"),
+        fname, cell_text, sig_threshold=0.05,
     )
 
 
@@ -1966,6 +1980,300 @@ def build_mcs_table(mcs):
                f"Status (α = {fmt(mcs['alpha'], 2)})"]
     html_table, latex = latex_table(columns, rows)
     return latex_button(latex) + html_table
+
+
+def compute_hypothesis_tests(recs, extras, base_preds=None, alpha=0.05):
+    """DM pareado + Friedman + Wilcoxon/Holm sobre perdas por origem.
+
+    Mesma matriz de perdas do MCS (MSE médio nos 36 horizontes por origem,
+    origens comuns a todos os métodos). DM com HLN + HAC lag 35; Friedman
+    com origens como blocos; Wilcoxon pareado com Holm. Grava
+    ``testes_hipotese.json`` e retorna o dict (usado pela figura-matriz).
+    """
+    def loss_series(df, col="predicted"):
+        e = (df["actual_raw"] - df[col]) ** 2
+        return e.groupby(df["origin"]).mean().sort_index()
+
+    series, names = {}, []
+    for r in recs:
+        names.append(r["short"])
+        series[r["short"]] = loss_series(extras[r["name"]]["all_df"])
+    names.append("P")
+    series["P"] = loss_series(extras[recs[0]["name"]]["all_df"], "persistence")
+    if base_preds is not None:
+        for col, nm in (("arima", "ARIMA"), ("rf", "RF")):
+            names.append(nm)
+            series[nm] = loss_series(base_preds.assign(
+                actual_raw=base_preds["actual"], predicted=base_preds[col]))
+    idx = series[names[0]].index
+    for nm in names[1:]:
+        idx = idx.intersection(series[nm].index)
+    idx = idx.sort_values()
+    mat = np.column_stack([series[n].loc[idx].to_numpy(dtype=float)
+                           for n in names])
+
+    dm_rows = []
+    for a, b in combinations(range(len(names)), 2):
+        d = mat[:, a] - mat[:, b]
+        res = diebold_mariano_loss_diff(d, h=36)
+        dm_rows.append({
+            "par": f"{names[a]} vs {names[b]}",
+            "dMSE": float(res["mean_loss_diff"]), "DM": float(res["dm"]),
+            "p": float(res["p_value"]),
+            "melhor": names[a] if res["mean_loss_diff"] < 0 else names[b],
+        })
+    for r, ph in zip(dm_rows, adjust_pvalues([r["p"] for r in dm_rows],
+                                             "holm")):
+        r["p_holm"] = float(ph)
+        r["rejeita"] = "sim" if r["p"] < alpha else "nao"
+        r["rejeita_holm"] = "sim" if ph < alpha else "nao"
+
+    from scipy.stats import friedmanchisquare, wilcoxon
+    fr = friedmanchisquare(*[mat[:, i] for i in range(len(names))])
+    ranks = (pd.DataFrame(mat, columns=names).rank(axis=1).mean()
+             .sort_values())
+    w_rows = []
+    for a, b in combinations(range(len(names)), 2):
+        try:
+            w = wilcoxon(mat[:, a], mat[:, b], zero_method="wilcox")
+        except ValueError:
+            continue
+        w_rows.append({
+            "par": f"{names[a]} vs {names[b]}", "p": float(w.pvalue),
+            "melhor": names[a] if mat[:, a].mean() < mat[:, b].mean()
+            else names[b],
+        })
+    for r, ph in zip(w_rows, adjust_pvalues([r["p"] for r in w_rows],
+                                            "holm")):
+        r["p_holm"] = float(ph)
+        r["rejeita_holm"] = "sim" if ph < alpha else "nao"
+
+    tests = {
+        "protocolo": ("perdas = MSE medio nos 36 horizontes por origem; "
+                      "DM com HLN + HAC lag 35; Wilcoxon pareado com Holm; "
+                      "Friedman com origens como blocos; alpha=0.05"),
+        "n_origens": int(len(idx)), "modelos": names,
+        "mse": {n: float(mat[:, i].mean()) for i, n in enumerate(names)},
+        "dm_pares": dm_rows,
+        "friedman": {"chi2": float(fr.statistic), "p": float(fr.pvalue),
+                     "ranks": {k: float(v) for k, v in ranks.items()}},
+        "wilcoxon_pares": w_rows,
+    }
+    common.write_json(OUT_DIR / "testes_hipotese.json", tests)
+
+    alphas = (0.25, 0.10, 0.05, 0.01)
+    per_alpha = {a: model_confidence_set(mat, names=names, alpha=a,
+                                         n_boot=2000, mean_block=36,
+                                         seed=SEED) for a in alphas}
+    table = []
+    for nm in sorted(names, key=lambda m: per_alpha[alpha]["exclusion_p"]
+                     .get(m, 1.0)):
+        p = per_alpha[alpha]["exclusion_p"].get(nm)
+        table.append({
+            "modelo": nm,
+            "p_exclusao": None if p is None else float(p),
+            **{f"alpha_{a}": ("dentro" if per_alpha[a]["exclusion_p"]
+                              .get(nm, 1.0) >= a else "fora") for a in alphas},
+        })
+    common.write_json(OUT_DIR / "mcs_multialpha.json", {
+        "protocolo": ("MCS sobre perdas por origem (MSE medio 36 passos), "
+                      "stationary bootstrap 2000, bloco medio 36, seed "
+                      f"{SEED}; rodada {OUT_DIR.name}"),
+        "n_origens": int(len(idx)), "modelos": names, "alphas": list(alphas),
+        "tabela": table,
+        "mcs_por_alpha": {f"{a}": per_alpha[a]["mcs"] for a in alphas},
+    })
+    return tests
+
+
+def plot_tests_matrix(tests, fname="fig_testes_hipotese.png"):
+    """Painéis modelo × modelo na ordem do rank de Friedman: rank (sup.
+    esq.), ΔMSE médio por origem em valor absoluto (sup. dir.; cor =
+    direção), p-valores do DM (inf. esq.) e do Wilcoxon pareado + Holm
+    (inf. dir.). Borda verde = rejeita H₀ (DM ou Wilcoxon-Holm)."""
+    ranks = tests["friedman"]["ranks"]
+    order = sorted(tests["modelos"], key=lambda m: ranks.get(m, 99.0))
+    label = {"TCN Bidirectional": "BiTCN", "TCN-Bi": "BiTCN",
+             "LSTM Bidirectional": "BiLSTM", "LSTM-Bi": "BiLSTM",
+             "P": "Pers.", "Persistência": "Pers.", "Persist.": "Pers.",
+             "RF": "RF", "Random Forest": "RF", "Rand. Forest": "RF"}
+    dm = {(r["par"].split(" vs ")[0], r["par"].split(" vs ")[1]): r
+          for r in tests["dm_pares"]}
+    wx = {(r["par"].split(" vs ")[0], r["par"].split(" vs ")[1]): r["p_holm"]
+          for r in tests["wilcoxon_pares"]}
+
+    def pair(a, b):
+        return dm.get((a, b), dm.get((b, a)))
+
+    def p_of(a, b):
+        return wx.get((a, b), wx.get((b, a)))
+
+    def fmt_p(p):
+        if p < 1e-6:
+            return "<10⁻⁶"
+        if p < 1e-3:
+            return f"{p:.0e}".replace("e-0", "e−")
+        return f"{p:.2f}".replace(".", ",")
+
+    n = len(order)
+
+    def draw(ax, mat, texts, cmap, vmin, vmax, title, clabel, borders,
+             text_colors=None, text_fs=15):
+        masked = np.ma.masked_invalid(mat)
+        cmap = matplotlib.colormaps[cmap].with_extremes(bad="#f2f2f2")
+        im = ax.imshow(masked, cmap=cmap, vmin=vmin, vmax=vmax,
+                       interpolation="nearest", aspect="auto")
+        for i in range(n):
+            for j in range(n):
+                if texts[i][j]:
+                    ax.text(j, i, texts[i][j], ha="center", va="center",
+                            fontsize=text_fs,
+                            color=(text_colors[i][j] if text_colors
+                                   else "black"),
+                            bbox=dict(boxstyle="round,pad=0.12", fc="white",
+                                      alpha=0.85, lw=0))
+                if borders[i][j]:
+                    ax.add_patch(plt.Rectangle((j - 0.5, i - 0.5), 1, 1,
+                                               fill=False,
+                                               edgecolor="#1a7d3c", lw=2.4))
+        ax.set_xticks(range(n))
+        ax.set_yticks(range(n))
+        ax.set_xticklabels([label.get(m, m) for m in order], fontsize=15,
+                           rotation=35, ha="right")
+        ax.set_yticklabels([label.get(m, m) for m in order], fontsize=15)
+        ax.tick_params(length=0)
+        ax.set_title(title, fontsize=17, pad=10)
+        cbar = fig.colorbar(im, ax=ax, fraction=0.046, pad=0.02)
+        cbar.set_label(clabel, fontsize=13)
+        cbar.ax.tick_params(labelsize=13)
+
+    fig, axes = plt.subplots(3, 2, figsize=(12.8, 14.6))
+
+    # sup. esquerdo: rank médio de Friedman
+    ax_r = axes[0, 0]
+    r_vals = [ranks[m] for m in order]
+    ypos = np.arange(n)
+    ax_r.barh(ypos, r_vals, height=0.62, color="#4c78a8",
+              edgecolor="#2f4b6e", lw=0.8)
+    ax_r.set_yticks(ypos, [label.get(m, m) for m in order], fontsize=15)
+    ax_r.invert_yaxis()
+    ax_r.set_xlim(0, max(r_vals) * 1.22)
+    ax_r.set_xlabel("rank médio (menor = melhor)", fontsize=13)
+    ax_r.set_title("Rank médio de Friedman  "
+                   f"(χ² = {tests['friedman']['chi2']:.0f}; "
+                   f"p = {tests['friedman']['p']:.1e})",
+                   fontsize=16, pad=10)
+    for y, v in zip(ypos, r_vals):
+        ax_r.text(v + max(r_vals) * 0.03, y, f"{v:.2f}".replace(".", ","),
+                  va="center", fontsize=13, color="#222")
+    ax_r.tick_params(length=0)
+    for spine in ("top", "right"):
+        ax_r.spines[spine].set_visible(False)
+
+    # sup. direito: ΔMSE com sinal na cor (azul = linha melhor) e o
+    # número em valor absoluto (sem sinal, célula mais limpa)
+    d_mat = np.zeros((n, n))
+    d_txt = [[""] * n for _ in range(n)]
+    d_sig = [[False] * n for _ in range(n)]
+    for i in range(n):
+        for j in range(n):
+            if i == j:
+                d_mat[i, j] = np.nan
+                continue
+            a, b = order[i], order[j]
+            r = pair(a, b)
+            signed = r["dMSE"] * (1.0 if r["par"].split(" vs ")[0] == a
+                                  else -1.0)
+            d_mat[i, j] = signed
+            d_txt[i][j] = f"{abs(signed):.2f}".replace(".", ",")
+            d_sig[i][j] = (r["p"] < 0.05) or (p_of(a, b) < 0.05)
+    lim = float(np.nanmax(np.abs(d_mat))) * 1.05
+    draw(axes[0, 1], d_mat, d_txt, "RdBu_r", -lim, lim,
+         "ΔMSE médio por origem (linha − coluna)",
+         "ΔMSE ((m/s)²) — azul = linha melhor, vermelho = pior", d_sig)
+
+    # meio esquerdo: estatística DM calculada (valor do teste)
+    s_mat = np.zeros((n, n))
+    s_txt = [[""] * n for _ in range(n)]
+    s_sig = [[False] * n for _ in range(n)]
+    for i in range(n):
+        for j in range(n):
+            if i == j:
+                s_mat[i, j] = np.nan
+                continue
+            a, b = order[i], order[j]
+            r = pair(a, b)
+            sign = 1.0 if r["par"].split(" vs ")[0] == a else -1.0
+            s_mat[i, j] = sign * r["DM"]
+            s_txt[i][j] = f"{s_mat[i, j]:+.2f}".replace(".", ",")
+            s_sig[i][j] = r["p"] < 0.05
+    slim = float(np.nanmax(np.abs(s_mat))) * 1.05
+    draw(axes[1, 0], s_mat, s_txt, "RdBu_r", -slim, slim,
+         "estatística Diebold–Mariano (linha − coluna)",
+         "DM — azul = linha melhor (perda menor); H₀: DM = 0", s_sig)
+
+    # p-valores: DM (meio direito) e Wilcoxon (inferior esquerdo)
+    for ax, (title, get_p) in zip(
+            (axes[1, 1], axes[2, 0]),
+            (("p-valor Diebold–Mariano (HLN + HAC)",
+              lambda a, b: pair(a, b)["p"]),
+             ("p-valor Wilcoxon pareado + Holm", p_of))):
+        mat = np.zeros((n, n))
+        txt = [[""] * n for _ in range(n)]
+        sig = [[False] * n for _ in range(n)]
+        for i in range(n):
+            for j in range(n):
+                if i == j:
+                    mat[i, j] = np.nan
+                    continue
+                p = get_p(order[i], order[j])
+                mat[i, j] = min(p, 0.10)
+                txt[i][j] = fmt_p(p)
+                sig[i][j] = p < 0.05
+        draw(ax, mat, txt, "RdYlGn_r", 0.0, 0.10, title,
+             "p-valor (verde < 0,05 = rejeita H₀)", sig,
+             text_fs=12.5 if title.startswith("p-valor Wilcoxon") else 15)
+
+    # inferior direito: MCS multi-α (dentro/fora)
+    ax_m = axes[2, 1]
+    multi_path = OUT_DIR / "mcs_multialpha.json"
+    multi = (json.loads(multi_path.read_text(encoding="utf-8"))
+             if multi_path.is_file() else None)
+    ax_m.set_title("Model Confidence Set — dentro/fora por α",
+                   fontsize=16, pad=10)
+    if multi:
+        alphas = multi["alphas"]
+        tabela = {r["modelo"]: r for r in multi.get("tabela", [])}
+        m_mat = np.zeros((n, len(alphas)))
+        m_txt = [[""] * len(alphas) for _ in range(n)]
+        for i, nm in enumerate(order):
+            row = tabela.get(nm)
+            for j, a in enumerate(alphas):
+                dentro = bool(row) and row.get(f"alpha_{a}") == "dentro"
+                m_mat[i, j] = 1.0 if dentro else 0.0
+                m_txt[i][j] = "dentro" if dentro else "fora"
+        cmap_m = matplotlib.colormaps["RdYlGn"].with_extremes(bad="#f2f2f2")
+        ax_m.imshow(m_mat, cmap=cmap_m, vmin=0, vmax=1, aspect="auto",
+                    interpolation="nearest")
+        for i in range(n):
+            for j in range(len(alphas)):
+                ax_m.text(j, i, m_txt[i][j], ha="center", va="center",
+                          fontsize=12.5, color="black",
+                          bbox=dict(boxstyle="round,pad=0.14", fc="white",
+                                    alpha=0.85, lw=0))
+        ax_m.set_xticks(range(len(alphas)),
+                        [f"α = {str(a).replace('.', ',')}" for a in alphas],
+                        fontsize=13)
+        ax_m.set_yticks(range(n), [label.get(m, m) for m in order],
+                        fontsize=15)
+        ax_m.tick_params(length=0)
+    else:
+        ax_m.axis("off")
+
+    fig.tight_layout(w_pad=2.6)
+    fig.savefig(IMG_DIR / fname, dpi=300, bbox_inches="tight")
+    plt.close(fig)
+    print(f"ok: {IMG_DIR / fname}")
 
 
 def build_dm_table(dm):
@@ -2722,7 +3030,7 @@ def build_html(recs, dataset_info, hz_stats, arch_records, extras, dataset,
             + "</nav>\n"
             f'<div class="container">\n<div class="cards">{cards}</div>\n'
             f"{''.join(parts)}\n</div>\n"
-            "<footer>Relatório gerado automaticamente por tests/relatorio_resultados.py"
+            "<footer>Relatório gerado automaticamente por reports/src/relatorio_resultados.py"
             " · métricas contra ws100 bruto · tempos medidos na GPU local</footer>\n"
             f"<script>{JS}</script>\n</body>\n</html>")
     return html
@@ -2763,7 +3071,7 @@ def record_run(results, extras, args, models_dir, dataset, denoise_level):
             dataset_rows=len(dataset), train_ratio=SPLIT_RATIOS["train_ratio"],
             val_ratio=SPLIT_RATIOS["val_ratio"],
             denoise_level=denoise_level,
-            source_file="tests/relatorio_resultados.py",
+            source_file="reports/src/relatorio_resultados.py",
             source_cmd=[sys.executable, *sys.argv],
             out_file=str(EVAL_CACHE),
             replace=not args.keep_prior)
@@ -2843,7 +3151,7 @@ def _fmt_ts_short(value) -> str:
 
 def main():
     global MODELS_DIR, OUT_DIR, IMG_DIR, EVAL_CACHE, SPLIT_RATIOS
-    global DENOISE_LEVEL, TRIM_BOUNDARY
+    global DENOISE_LEVEL, TRIM_BOUNDARY, BASELINES_DIR
     parser = argparse.ArgumentParser(description="Relatório de resultados (HTML).")
     parser.add_argument("--models-dir", type=Path, default=None,
                         help="base dos modelos treinados (default: pipeline/tmp/trained_compare)")
@@ -2852,6 +3160,11 @@ def main():
     parser.add_argument("--no-baselines", action="store_true",
                         help="nao incluir ARIMA/RF/persistencia (foram calculados no "
                              "teste antigo de 5%%; inconsistentes com outros splits)")
+    parser.add_argument("--baselines-dir", type=Path, default=None,
+                        help="pasta com as predicoes dos baselines geradas por "
+                             "studies/baseline_arima_rf.py NA MESMA grade de split "
+                             "da rodada (predictions_long.csv; default: "
+                             "data/results/baselines/arima_rf)")
     parser.add_argument("--loss-ab-dir", type=Path, default=None,
                         help="diretorio com variantes de loss (mesmo protocolo) para "
                              "o painel A/B do DM — ex.: pipeline/tmp/trained_8020_mseloss")
@@ -2878,6 +3191,10 @@ def main():
     parser.add_argument("--run-description", default=None,
                         help="descricao livre da run no banco")
     args = parser.parse_args()
+
+    if args.baselines_dir:
+        BASELINES_DIR = PROJECT_ROOT / args.baselines_dir
+        print(f"Baselines: {BASELINES_DIR}")
 
     TRIM_BOUNDARY = int(args.trim_boundary_origins)
     if TRIM_BOUNDARY > 0:
@@ -2970,6 +3287,12 @@ def main():
     common.write_json(OUT_DIR / "mcs.json", mcs)
     print(f"MCS (α={mcs['alpha']:.2f}): {', '.join(mcs['mcs'])} "
           f"({len(mcs['exclusion_p'])} candidatos, {mcs['n_boot']} bootstrap)")
+
+    tests = compute_hypothesis_tests(recs, extras, base_preds)
+    plot_tests_matrix(tests)
+    print(f"Testes de hipótese: Friedman χ²={tests['friedman']['chi2']:.1f} "
+          f"(p={tests['friedman']['p']:.2g}); {len(tests['dm_pares'])} pares DM, "
+          f"{len(tests['wilcoxon_pares'])} pares Wilcoxon")
 
     dm_ab = None
     if args.loss_ab_dir:

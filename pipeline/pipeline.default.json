@@ -8,9 +8,9 @@
     "denoise_level": 2,
     "batch_size": 32,
     "loss": "mse",
-    "patience": 8,
-    "train_ratio": 0.75,
-    "val_ratio": 0.2,
+    "patience": 12,
+    "train_ratio": 0.725,
+    "val_ratio": 0.125,
     "params_source": "optuna",
     "decoder_mode": "direct",
     "persistence_gate": false,
@@ -40,7 +40,7 @@
   "train": {
     "enabled": true,
     "wrapper": "lstm_bi",
-    "epochs": 100,
+    "epochs": 60,
     "verbose": 1
   },
   "evaluate": {

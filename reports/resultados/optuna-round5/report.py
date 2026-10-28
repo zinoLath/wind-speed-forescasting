@@ -131,7 +131,7 @@ def build(ctx):  # noqa: ARG001
         return C.page_header(
             "Optuna Round 5 — skill em bloco (validação)",
             "Sem dados locais.") + C.note(
-            "Rode <code>scripts/colab_round2.py collect --kaggle --promote</code> "
+            "Rode <code>scripts/dist/colab_round2.py collect --kaggle --promote</code> "
             "para trazer os resultados dos kernels.")
 
     rows = best_table(data)
@@ -178,7 +178,7 @@ def build(ctx):  # noqa: ARG001
         sub="Execução: 2 kernels Kaggle (gpu1 = tcn+lstm_bi; gpu2 = "
             "lstm+tcn_bi), 100 trials/wrapper — a LSTM terminou com 104 "
             "(retomada do kernel acrescentou 4). Coleta e promoção: "
-            "scripts/colab_round2.py collect --kaggle --promote (backup "
+            "scripts/dist/colab_round2.py collect --kaggle --promote (backup "
             "da rodada anterior em pipeline/tmp/optuna_backup_* e "
             "Seq2Seq_TCN.bak_r4).",
         sec_id="protocolo"))
@@ -236,7 +236,7 @@ REPORT = {
         ("Split", "72/8/20 (teste intocado)"),
         ("Loss", "LSTM→ITILDE-Q · TCN→MSE"),
         ("Dilatações", "estáticas C′ + profundidade"),
-        ("Coleta", "scripts/colab_round2.py collect --kaggle --promote"),
+        ("Coleta", "scripts/dist/colab_round2.py collect --kaggle --promote"),
     ],
 }
 

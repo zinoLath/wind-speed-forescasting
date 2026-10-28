@@ -1,6 +1,6 @@
 """Relatório de resultados — LiDAR 75/25 (split parametrizável).
 
-75% treino / 25% teste sem validação (scripts/lidar_7525_train.py
+75% treino / 25% teste sem validação (scripts/experiments/lidar_7525_train.py
 --train-ratio 0.75 -> pipeline/tmp/trained_7525).
 
     python reports/lidar/7525/report.py
@@ -23,10 +23,10 @@ REPORT, build = report_module(
     subtitle="Protocolo: 75% treino / 25% teste, sem validação, 60 épocas "
              "fixas, seed 42. Mesma janela (72 → 36 passos de 10 min).",
     badges=("75/25", "60 épocas", "seed 42"),
-    regenerate=[".venv/bin/python", "tests/relatorio_resultados.py",
+    regenerate=[".venv/bin/python", "reports/src/relatorio_resultados.py",
                 "--models-dir", "pipeline/tmp/trained_7525",
                 "--out-dir", "data/results/report_7525", "--no-baselines"],
-    retrain=[".venv/bin/python", "scripts/lidar_7525_train.py",
+    retrain=[".venv/bin/python", "scripts/experiments/lidar_7525_train.py",
              "--train-ratio", "0.75"],
     info=[("Protocolo", "75/25 sem validação"), ("Épocas", "60 fixas"),
           ("Seed", "42"), ("Janela", "72 → 36 passos (10 min)"),

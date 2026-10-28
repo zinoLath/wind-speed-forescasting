@@ -1,11 +1,11 @@
 """Análise do A/B de loss na config bihp (80/20) — hw × ITILDE-Q.
 
 Lê as predições long-format gravadas por
-``scripts/lidar_lstm_bihp_ab_train.py`` (sem GPU), calcula métricas
+``scripts/experiments/lidar_lstm_bihp_ab_train.py`` (sem GPU), calcula métricas
 denso/rolling/skill e o DM pareado por origem (agregado e por horizonte),
 e grava figuras + ``bihp_ab_8020.json``.
 
-    python tests/lstm_bihp_ab_8020.py \
+    python studies/lstm_bihp_ab_8020.py \
         --models-dir pipeline/tmp/trained_8020_lstm_bihp_ab \
         --out-dir data/results/lstm_bihp_ab_8020
 """
@@ -21,7 +21,7 @@ import matplotlib.pyplot as plt
 import pandas as pd
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-for path in (PROJECT_ROOT, PROJECT_ROOT / "tests"):
+for path in (PROJECT_ROOT,):
     if str(path) not in sys.path:
         sys.path.insert(0, str(path))
 

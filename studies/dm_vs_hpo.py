@@ -6,8 +6,8 @@ com defasagem h−1, correção HLN). Convenção: DM(A, B) positivo ⇒ o model
 tem perda maior (pior) naquele horizonte.
 
 Uso (default: HP antigos × HP do Optuna, 4 wrappers):
-    python tests/dm_vs_hpo.py
-    python tests/dm_vs_hpo.py --a pipeline/tmp/trained_8020 \
+    python studies/dm_vs_hpo.py
+    python studies/dm_vs_hpo.py --a pipeline/tmp/trained_8020 \
         --b pipeline/tmp/trained_8020_tcn_cprime \
         --wrappers tcn tcn_bi --out data/results/dm_dilations \
         --a-label "dil. legado" --b-label "dil. C′"
@@ -22,8 +22,9 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
-if str(Path(__file__).resolve().parent) not in sys.path:
-    sys.path.insert(0, str(Path(__file__).resolve().parent))
+for path in (PROJECT_ROOT, PROJECT_ROOT / "reports" / "src"):
+    if str(path) not in sys.path:
+        sys.path.insert(0, str(path))
 
 import matplotlib
 

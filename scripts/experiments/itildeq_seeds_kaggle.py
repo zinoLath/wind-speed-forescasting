@@ -6,16 +6,16 @@ comando de cada kernel é o ``lidar_8020_itildeq_seeds_train.py`` com a lista
 de seeds.
 
     # 1. empacota código + dataset
-    python scripts/itildeq_seeds_kaggle.py package
+    python scripts/experiments/itildeq_seeds_kaggle.py package
 
     # 2. versiona o Dataset e empurra os 2 kernels
-    python scripts/itildeq_seeds_kaggle.py push --seeds 42 43 44 45 46 47 48 49 50 51
+    python scripts/experiments/itildeq_seeds_kaggle.py push --seeds 42 43 44 45 46 47 48 49 50 51
 
     # 3. acompanha
-    python scripts/itildeq_seeds_kaggle.py status
+    python scripts/experiments/itildeq_seeds_kaggle.py status
 
     # 4. baixa os outputs, restaura as predições, roda a análise e o site
-    python scripts/itildeq_seeds_kaggle.py collect --build-report
+    python scripts/experiments/itildeq_seeds_kaggle.py collect --build-report
 
 `run-all` encadeia 1–4 (empurra, espera ambos terminarem e coleta).
 
@@ -31,7 +31,7 @@ import time
 import zipfile
 from pathlib import Path
 
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
@@ -53,7 +53,7 @@ DEFAULT_SEEDS = list(range(42, 52))
 # ---------------------------------------------------------------------------
 
 def _cli():
-    from scripts.colab_round2 import _kaggle_run, _kaggle_user
+    from scripts.dist.colab_round2 import _kaggle_run, _kaggle_user
     return _kaggle_run, _kaggle_user
 
 
@@ -111,11 +111,11 @@ def _dataset(args, zip_path):
 
 def _push_kernels(args, full_id, seeds):
     _run, user = _cli()
-    from scripts.kaggle_runner import KERNEL_TEMPLATE
+    from scripts.dist.kaggle_runner import KERNEL_TEMPLATE
 
     seed_args = " ".join(str(s) for s in seeds)
     for wrapper, slug in KERNELS.items():
-        command = (f"python scripts/lidar_8020_itildeq_seeds_train.py "
+        command = (f"python scripts/experiments/lidar_8020_itildeq_seeds_train.py "
                    f"--wrappers {wrapper} --seeds {seed_args} "
                    f"--output-dir {OUTPUT_GLOB}")
         script = KERNEL_TEMPLATE.format(
@@ -161,8 +161,8 @@ def cmd_push(args):
     full_id = _dataset(args, zip_path)
     _push_kernels(args, full_id, args.seeds)
     if not args.dry_run:
-        print("Acompanhe com: python scripts/itildeq_seeds_kaggle.py status")
-        print("Ao terminar: python scripts/itildeq_seeds_kaggle.py collect "
+        print("Acompanhe com: python scripts/experiments/itildeq_seeds_kaggle.py status")
+        print("Ao terminar: python scripts/experiments/itildeq_seeds_kaggle.py collect "
               "--build-report")
 
 
@@ -229,7 +229,7 @@ def cmd_collect(args):
     print(f"predições em: {models_dir}")
     if not args.no_analysis:
         subprocess.check_call([
-            sys.executable, "tests/itildeq_seeds_8020.py",
+            sys.executable, "studies/itildeq_seeds_8020.py",
             "--models-dir", str(models_dir.relative_to(PROJECT_ROOT)),
             "--out-dir", "data/results/itildeq_seeds_8020",
         ], cwd=PROJECT_ROOT)

@@ -46,9 +46,11 @@ class S2STCNWrapper(Seq2SeqWrapper):
             self.loss = LOSS_NAME
 
         if weight_decay:
-            optimizer = AdamW(learning_rate=learning_rate, weight_decay=weight_decay)
+            optimizer = AdamW(learning_rate=learning_rate, weight_decay=weight_decay,
+                               clipnorm=getattr(self, "clipnorm", 1.0))
         else:
-            optimizer = Adam(learning_rate=learning_rate)
+            optimizer = Adam(learning_rate=learning_rate,
+                              clipnorm=getattr(self, "clipnorm", 1.0))
 
         # A single shared filter count feeds both encoder and decoder.
         shared_filters = hp.Int(

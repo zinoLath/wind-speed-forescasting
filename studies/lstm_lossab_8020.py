@@ -1,6 +1,6 @@
 """Análise do A/B controlado de loss (LSTM/LSTM-Bi, 80/20).
 
-Lê as predições gravadas por ``scripts/lidar_8020_lstm_lossab_train.py``
+Lê as predições gravadas por ``scripts/experiments/lidar_8020_lstm_lossab_train.py``
 (denso + rolling) e compara, com TUDO igual exceto a função de perda:
 
 - ``horizon_weighted_mse`` (canônica) × ``itilde_q`` (shape-aware);
@@ -9,7 +9,7 @@ Lê as predições gravadas por ``scripts/lidar_8020_lstm_lossab_train.py``
 
 Não precisa de GPU (só pandas/numpy/matplotlib):
 
-    python tests/lstm_lossab_8020.py \
+    python studies/lstm_lossab_8020.py \
         --models-dir pipeline/tmp/trained_8020_lstm_lossab \
         --out-dir data/results/lstm_lossab_8020
 """
@@ -20,7 +20,7 @@ import sys
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-for path in (PROJECT_ROOT, PROJECT_ROOT / "tests"):
+for path in (PROJECT_ROOT,):
     if str(path) not in sys.path:
         sys.path.insert(0, str(path))
 

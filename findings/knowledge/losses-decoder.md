@@ -13,9 +13,9 @@ Duas decisões centrais que definem o comportamento honesto dos modelos.
 - Treino usa **MSE ponderada por horizonte** (`src/models/losses.py`,
   `horizon_weighted_mse`), favorecendo horizontes longos. A chave `loss` do
   config é mantida por compatibilidade, mas **os wrappers fixam a loss**.
-- Ablações canônicas: MSE pura (`scripts/lidar_8020_mseloss_train.py` →
+- Ablações canônicas: MSE pura (`scripts/experiments/lidar_8020_mseloss_train.py` →
   `reports/lidar/8020-mseloss`) e loss invertida
-  (`scripts/lidar_8020_startweight_train.py`).
+  (`scripts/experiments/lidar_8020_startweight_train.py`).
 
 ## Convenção do decoder
 

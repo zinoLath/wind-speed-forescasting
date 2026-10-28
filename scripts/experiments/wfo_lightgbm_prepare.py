@@ -14,14 +14,14 @@ Saidas em data/wfo_lightgbm/: series_imputed.csv, imputed_flags.csv,
 series_meta.json e imputation_validation/ (detailed/summary/plots).
 
 Usage:
-    python scripts/wfo_lightgbm_prepare.py [--skip-imputation]
+    python scripts/experiments/wfo_lightgbm_prepare.py [--skip-imputation]
 """
 
 import argparse
 import sys
 from pathlib import Path
 
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 

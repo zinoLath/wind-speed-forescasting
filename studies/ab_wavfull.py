@@ -27,7 +27,7 @@ def patched(path, keep_raw=()):
 
 common.load_dataset = patched
 
-import tests.train_compare_tcn as driver  # noqa: E402  (após o patch)
+import studies.train_compare_tcn as driver  # noqa: E402  (após o patch)
 
 sys.argv = [
     "train_compare", "--wrappers", "lstm", "tcn",

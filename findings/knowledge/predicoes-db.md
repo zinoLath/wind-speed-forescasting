@@ -9,7 +9,7 @@ updated: 2026-10-22
 Fonte canônica das execuções de avaliação/predição — substitui o rastro
 solto de `evaluation.json` (sem controle do que foi executado) como base
 dos relatórios. Módulo: `src/predictions_db.py`; gerado por
-`tests/relatorio_resultados.py` (gravação automática ao fim de cada
+`reports/src/relatorio_resultados.py` (gravação automática ao fim de cada
 avaliação; `--no-db` para pular).
 
 ## Esquema (7 tabelas)
@@ -41,7 +41,7 @@ avaliação; `--no-db` para pular).
 
 - **PROCESSO CANÔNICO (sempre assim)**: toda avaliação de resultados grava
   a run no banco — é o comportamento padrão de
-  `tests/relatorio_resultados.py` (nada a mais a fazer). `--no-db` é só
+  `reports/src/relatorio_resultados.py` (nada a mais a fazer). `--no-db` é só
   para depuração e não deve entrar em runbooks. Regeneração de figuras
   quando a run já está no banco: `--from-db` (sem GPU). A run de um
   `report_id` é substituída a cada nova avaliação (run canônica única por
@@ -90,7 +90,7 @@ python -m src.predictions_db prune <id>                    # remove a run
 ## Fontes
 
 - `src/predictions_db.py` (schema + API + CLI);
-  `tests/relatorio_resultados.py` (`record_run`, `run_from_database`);
+  `reports/src/relatorio_resultados.py` (`record_run`, `run_from_database`);
   `reports/src/resultados.py` (`_run_from_db`).
 - Validação 22/10/2026: avaliação GPU → DB (218.596 predições) → rebuild
   do hub lendo do banco → `--from-db lidar/8020` reproduz métricas com

@@ -54,8 +54,8 @@ def load_meta(wrapper_key, hp_json):
         if path.is_dir():
             path = path / wrapper_key / "model.json"
         return json.load(open(path, encoding="utf-8"))
-    return json.load(open(CANON_DIR / wrapper_key / "model.json",
-                          encoding="utf-8"))
+    # snapshot versionado (pipeline/configs/) com fallback ao artefato treinado
+    return common.canonical_round_meta(wrapper_key)
 
 
 def load_hp(wrapper_key, hp_json):
@@ -173,6 +173,7 @@ def train_one(tf, wrapper_key, seed, dataset, train_df, test_df, val_end,
         "params_source": "canônica 16/10 (trained_8020_itildeq) com perda "
                          "MSE pura — rodada final SBSR (variância de seed)",
         "feature_keep": list(KEEP_BY_WRAPPER[wrapper_key]),
+        "heights_filter": args.heights,
         "feature_set": ("perfil 46 + humid/temp (48 col)" if wrapper_key in
                         ("tcn", "tcn_bi") else
                         "perfil 46 + cis1..19 + humid/temp (67 col; "
@@ -236,6 +237,13 @@ def main():
     parser.add_argument("--hp-json", default=None,
                         help="model.json (ou diretório com <wrapper>/"
                              "model.json) para sobrescrever os HPs")
+    parser.add_argument("--extras", choices=("none", "meteo", "featurex"),
+                        default="featurex",
+                        help="colunas extras sobre o perfil canônico: none "
+                             "(46), meteo (48), featurex (67)")
+    parser.add_argument("--heights", type=int, nargs="+", default=None,
+                        help="mantém ws/v/dir apenas nestas alturas "
+                             "(ex.: 40 100 140 = receita h3)")
     args = parser.parse_args()
 
     OUTPUT_DIR = common.resolve(args.output_dir)
@@ -245,18 +253,30 @@ def main():
     print(f"TensorFlow {tf.__version__} | GPU: {env['gpu']} | "
           f"host: {env['hostname']}", flush=True)
 
-    datasets = {keep: common.load_dataset(
+    import re as _re
+
+    extras_map = {"none": (), "meteo": KEEP_METEO,
+                  "featurex": KEEP_FEATUREX}
+    keep = extras_map[args.extras]
+    datasets = {k: common.load_dataset(
                     common.resolve("data/dataset.csv"), keep_raw=keep)
-                for keep in dict.fromkeys(KEEP_BY_WRAPPER.values())}
+                for k in dict.fromkeys(KEEP_BY_WRAPPER[w]
+                                       for w in args.wrappers)}
+    if args.heights:
+        allowed = set(args.heights)
+        for k, ds in datasets.items():
+            drop = [c for c in ds.columns
+                    if (m := _re.match(r"^(ws|v|dir)(\d+)(?:_sin|_cos)?$", c))
+                    and int(m.group(2)) not in allowed]
+            datasets[k] = ds.drop(columns=drop)
     observed = common.observed_timestamps(common.resolve("data/dataset.csv"))
     for k, ds in datasets.items():
-        print(f"dataset keep={len(k)} extras: {len(ds)} linhas x "
-              f"{ds.shape[1]} colunas", flush=True)
+        print(f"dataset keep={len(k)} extras heights={args.heights}: "
+              f"{len(ds)} linhas x {ds.shape[1]} colunas", flush=True)
     print(f"seeds {args.seeds}", flush=True)
 
     for wrapper_key in args.wrappers:
-        keep = KEEP_BY_WRAPPER[wrapper_key]
-        dataset = datasets[keep]
+        dataset = datasets[KEEP_BY_WRAPPER[wrapper_key]]
         train_df, _val_df, test_df = common.split_dataset(dataset, 0.80, 0.0)
         val_end = len(train_df)
         summary = {}

@@ -10,11 +10,11 @@
 # they are failed so the n_remaining budget is not spent on dead trials).
 #
 # Usage:
-#   bash scripts/optuna_watchdog.sh [config_path] [wrapper ...]
+#   bash scripts/dist/optuna_watchdog.sh [config_path] [wrapper ...]
 
 set -u
 
-PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$PROJECT_ROOT"
 
 CONFIG="${1:-pipeline/pipeline.optuna_tcn_aggressive.json}"
@@ -27,7 +27,7 @@ RAM_FRAC="${RAM_FRAC:-0.85}"
 
 # Limite de RAM calibrado pelo ambiente de execucao: 85% da MemTotal quando
 # MAX_USED_GB nao vem do ambiente (Colab/Kaggle usam fracoes proprias; o
-# worker Kaggle calibra em scripts/kaggle_round2_worker.py).
+# worker Kaggle calibra em scripts/dist/kaggle_round2_worker.py).
 if [ -z "${MAX_USED_GB:-}" ]; then
     MAX_USED_GB=$(awk '/^MemTotal/ {printf "%.1f", $2 / 1024 / 1024 * '"$RAM_FRAC"'}' /proc/meminfo)
 fi

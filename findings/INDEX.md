@@ -21,7 +21,7 @@
 
 ### protocolo
 
-- [protocolo-avaliacao](knowledge/protocolo-avaliacao.md) — protocolos: pipeline 75/20/5 com validação vs LiDAR 80/20 sem validação (60 épocas, seed 42); métricas vs ws100 bruto; rolling sem vazamento.
+- [protocolo-avaliacao](knowledge/protocolo-avaliacao.md) — protocolos: pipeline default = reval 72,5/12,5/15 com validação + ES/RLRP (desde 28/10), LiDAR 80/20 sem validação (60 épocas, seed 42) da rodada 8020-sbsr; métricas vs ws100 bruto; rolling sem vazamento.
 - [variancia-implicita](knowledge/variancia-implicita.md) — diagnóstico de consistência Var(y) = MSE/(1−R²): mesma tabela ⇒ variância implícita única; provou origens diferentes (2,702 × 2,779) na Tabela 1 do SBSR; critério de pronto da sbsr-integrate.
 - [validacao-cruzada-series-curtas](knowledge/validacao-cruzada-series-curtas.md) — 53 dias cobrem ~53 ciclos diurnos; k-fold aleatório inviável por sobreposição (purge ≥ 108 passos ⇒ ~70 blocos independentes); precedente TSCV com gap em 8.640 pontos (Bergmeir 2018); limitação real = escalas > diária.
 - [wavelet-denoise](knowledge/wavelet-denoise.md) — alvo `ws100_wavelet` = sym18 nível 2, VisuShrink soft-threshold; escolha validada por A/B (`docs/ab_target_denoise.md`).
@@ -29,7 +29,9 @@
 ### resultados
 
 - [resultados-canonicos](knowledge/resultados-canonicos.md) — números de referência: report_8020 (TCN R² 0.514), report_homologado (antigo, alimenta steam/paper), tabelas do artigo SBR desatualizadas, métricas históricas inválidas (MAE 0.1589).
-- [estudos-ablacoes](knowledge/estudos-ablacoes.md) — mapa de evidências: A/B alvo, ablações de loss, HPO dedicado, seeds, gate/persistência, dilatações TCN, features study, WFO, featurex (67 canais/MSE), ablação de alturas, wd sweep, CV purgada, MCS por horizonte, piso de ruído.
+- [estudos-ablacoes](knowledge/estudos-ablacoes.md) — mapa de evidências: A/B alvo, ablações de loss, HPO dedicado, seeds, gate/persistência, dilatações TCN, features study, WFO, featurex (67 canais/MSE), ablação de alturas, A/B alturas 150–260 + cis≤140 (reval: 67 > 103 > 58; corte 140 m não custa; cis11..19 têm sinal), wd sweep, CV purgada, MCS por horizonte, piso de ruído.
+- [lstm-mean-multiresolucao](knowledge/lstm-mean-multiresolucao.md) — cascata coarse-to-fine: `lstm_mean` (médias horárias, broadcast 0,346) + `lstm_detail` (detalhe condicionado no hint level-free com ruído DART σ=0.6) = **R² 0,440 vs bruto**, vence controle (0,403), persistência (0,413) e canônica (0,338); com TCN não transfere (0,390 vs controle 0,438 — boosting ajuda modelo fraco, não o forte); armadilhas: vazamento de hint in-sample, atalho de nível, `data_min` na composição MinMax.
+- [stride6-decoder-esparso](knowledge/stride6-decoder-esparso.md) — decoder esparso stride-6 (só h=6..36, mesmos HPs/loss/seed da canônica): LSTM/LSTM-Bi vencem a canônica nos mesmos horizontes (R² 0,363/0,350 vs 0,273/0,299), TCN/TCN-Bi perdem (0,287/0,273 vs 0,493/0,459); treino denso 36 passos = multi-tarefa que beneficia a TCN.
 
 ### metodos
 
@@ -49,12 +51,14 @@
 - [artigo-steam-knowledge](knowledge/artigo-steam-knowledge.md) — steam (classe imc/UNIFEI, sem .git, figures do homologado) + knowledge (catálogo bibtex com abstract, gerador `knowledge.py`, index/bib GERADOS).
 - [overleaf-sync](knowledge/overleaf-sync.md) — paper_sync + articles_sync, sync.json só de figuras, hook post-commit = ponto de push, credenciais/best-effort.
 - [seeds-literatura](knowledge/seeds-literatura.md) — mapeamento de seeds na base: minoria recente usa N seeds (5/10/30) + mean±std + teste sobre os N valores (pareado com seeds compartilhadas: bendes2026bio, SeqBinder); maioria = 1 run sem menção; testes DM/Friedman sobre tempo não replicam seed.
+- [testes-hipotese-literatura](knowledge/testes-hipotese-literatura.md) — H0, pares e vereditos dos testes nos artigos da base: DM domina (H0 = perda esperada igual, perda quadrática); maioria rejeita (proposto > benchmarks); 6 artigos reportam NS explícitos (binrong2026whole p=0.128–0.814, bendes2026bio p=0.674 ablação bidir); chen2024research usa KW invertido (não-rejeitar = adequação); 2 sem veredito, 2 sem teste.
 - [rodada-final-sbsr](knowledge/rodada-final-sbsr.md) — decisões do paper: MSE pura em todos os wrappers (ITILDE-Q descartada), narrativa ARIMA/TCN redigida pelo autor, último treino → `reports/lidar/8020-sbsr`; checklist do grill-me de unificação.
 
 ### infra
 
 - [pipeline-estagios](knowledge/pipeline-estagios.md) — estágios optuna→train→evaluate→impute→walkforward, configs mesclados, `src/common.py` fonte única sem efeitos colaterais, bootstrap sys.path.
 - [ambiente-execucao](knowledge/ambiente-execucao.md) — venv py3.10, TF 2.21+CUDA (`tf_gpu_env.sh` obrigatório), tests/ standalone, train_dashboard, setsid para background.
+- [reorganizacao-revisao](knowledge/reorganizacao-revisao.md) — reorganização 28/10/2026 para revisão humana: `studies/` (ex-tests), `relatorio_resultados` em `reports/src/`, `scripts/{experiments,dist}/`, HPs canônicos versionados em `pipeline/configs/`, persistência de config (`config.py set/profiles/reset` — canônico nunca editado por experimento), OLD/images/ptxas des-rastreados; ~500 refs atualizadas sem mudança de comportamento.
 
 ### processo
 

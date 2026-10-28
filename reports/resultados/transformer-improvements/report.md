@@ -6,7 +6,7 @@ Melhorar iterativamente o wrapper Transformer (`Seq2Seq`) até que seu desempenh
 
 ## Metodologia
 
-Foi criado um **harness de benchmark justo** (`tests/benchmark_transformer.py`) que treina qualquer wrapper com hiperparâmetros fixos, sob um orçamento controlado e com seed reproduzível, e reporta `val_loss` + métricas walk-forward (MAE/RMSE/R²) na mesma região de teste (344 amostras) do `wfo_optuna.py`. Cada ciclo consistiu em: testar uma ideia → medir → manter/corrigir.
+Foi criado um **harness de benchmark justo** (`studies/benchmark_transformer.py`) que treina qualquer wrapper com hiperparâmetros fixos, sob um orçamento controlado e com seed reproduzível, e reporta `val_loss` + métricas walk-forward (MAE/RMSE/R²) na mesma região de teste (344 amostras) do `wfo_optuna.py`. Cada ciclo consistiu em: testar uma ideia → medir → manter/corrigir.
 
 Uma descoberta crítica durante a validação: os baselines salvos em `data/results/wfo_optuna/` eram **obsoletos** (o `dataset.csv` mudou desde então). Reexecutando `wfo_optuna.py` com os mesmos parâmetros, o LSTM passou de MAE 0.17 para **1.45**. Todos os baselines foram, portanto, re-estabelecidos nos dados atuais antes da comparação.
 
@@ -55,5 +55,5 @@ O Transformer superou **ambos** LSTM e TCN: ~5% melhor que o TCN e ~7% melhor qu
 - `src/models/s2s_transformer_preln_wrapper.py` — arquitetura vencedora (com suporte a schedule, weight decay, clipnorm e loss configurável).
 - `src/models/s2s_transformer_autoreg_wrapper.py` — variante autorregressiva (testada, piora o resultado; mantida como registro da validação).
 - `src/models/s2s_transformer_wrapper.py` — `WarmupCosineSchedule` + `make_learning_rate` compartilhados.
-- `tests/benchmark_transformer.py` — harness de benchmark justo e reproduzível (log em `data/results/benchmark_transformer.jsonl`).
-- `tests/optuna_all_hyperparameters.py` e `tests/wfo_optuna.py` — agora usam o `S2STransformerPrelnWrapper` (arquitetura vencedora) com schedule warmup/cosine habilitado.
+- `studies/benchmark_transformer.py` — harness de benchmark justo e reproduzível (log em `data/results/benchmark_transformer.jsonl`).
+- `studies/optuna_all_hyperparameters.py` e `tests/wfo_optuna.py` — agora usam o `S2STransformerPrelnWrapper` (arquitetura vencedora) com schedule warmup/cosine habilitado.

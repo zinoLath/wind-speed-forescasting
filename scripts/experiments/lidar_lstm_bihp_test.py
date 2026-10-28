@@ -6,7 +6,7 @@ mesma seed, mesmo orcamento de epocas, mesmo split. Nada sobrescrito:
 - modelo -> pipeline/tmp/trained_8020_lstm_bihp/lstm
 - metricas -> data/results/lstm_bihp_8020/summary.json
 
-    python scripts/lidar_lstm_bihp_test.py
+    python scripts/experiments/lidar_lstm_bihp_test.py
 """
 
 import argparse
@@ -15,7 +15,7 @@ import sys
 import time
 from pathlib import Path
 
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 

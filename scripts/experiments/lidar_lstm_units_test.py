@@ -3,7 +3,7 @@
 Nao sobrescreve nada: modelo -> pipeline/tmp/trained_8020_lstm_u{N}/lstm,
 metricas -> data/results/lstm_u{N}_8020/summary.json.
 
-    python scripts/lidar_lstm_units_test.py --units 224
+    python scripts/experiments/lidar_lstm_units_test.py --units 224
 """
 
 import argparse
@@ -12,7 +12,7 @@ import sys
 import time
 from pathlib import Path
 
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 

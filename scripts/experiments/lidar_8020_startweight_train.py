@@ -6,8 +6,8 @@ a unica diferenca e a funcao de perda: pesos decrescentes com o horizonte
 O patch e em runtime (simbolos dos modulos dos wrappers), codigo canonical
 intocado.
 
-    python scripts/lidar_8020_startweight_train.py                # treina as LSTMs
-    python scripts/lidar_8020_startweight_train.py \
+    python scripts/experiments/lidar_8020_startweight_train.py                # treina as LSTMs
+    python scripts/experiments/lidar_8020_startweight_train.py \
         --wrappers lstm lstm_bi tcn tcn_bi                        # todas
 """
 
@@ -17,7 +17,7 @@ import sys
 import time
 from pathlib import Path
 
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 

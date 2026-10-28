@@ -1,7 +1,7 @@
 ---
 title: Variância implícita R²×MSE — diagnóstico de consistência
 area: protocolo
-updated: 2026-10-20
+updated: 2026-10-23
 ---
 
 # Variância implícita R²×MSE — diagnóstico de consistência
@@ -41,7 +41,7 @@ série de teste.
 
 ## O fix (como garantir variância implícita única)
 
-`tests/relatorio_resultados.py` (~linha 360) alinha o DL à **mesma grade
+`reports/src/relatorio_resultados.py` (~linha 360) alinha o DL à **mesma grade
 de origens dos baselines**: primeira origem = primeira linha do teste, com
 o encoder consumindo o fim da fronteira treino/teste. Regenerar a rodada
 **SEM `--no-baselines`** produz DL + baselines comparáveis.
@@ -64,7 +64,7 @@ e do relatório `reports/protocolo/sessao-comentarios-sbsr-1/` (§1.1/§4.1).
 - Cálculo verificado: `data/results/report_8020/evaluation.json` (DL) e
   `data/results/baselines/arima_rf/metrics.json` (baselines, config
   `n_origins 1478`).
-- Alinhamento de origens: `tests/relatorio_resultados.py` (~linha 360).
+- Alinhamento de origens: `reports/src/relatorio_resultados.py` (~linha 360).
 - Contexto completo: `docs/revisions/sbr/comentarios_revisao_sbsr.md` §4.2;
   bloco `% [V-6ace944b]` em `articles/sbr/.../04_Resultados.tex`.
 - Skills: `sbsr-integrate` (critério), `lidar-retrain` (regeneração

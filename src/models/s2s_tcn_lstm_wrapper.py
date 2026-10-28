@@ -35,9 +35,11 @@ class S2STCNLSTMWrapper(Seq2SeqWrapper):
         self.loss = LOSS_NAME
 
         if weight_decay:
-            optimizer = AdamW(learning_rate=learning_rate, weight_decay=weight_decay)
+            optimizer = AdamW(learning_rate=learning_rate, weight_decay=weight_decay,
+                               clipnorm=getattr(self, "clipnorm", 1.0))
         else:
-            optimizer = Adam(learning_rate=learning_rate)
+            optimizer = Adam(learning_rate=learning_rate,
+                              clipnorm=getattr(self, "clipnorm", 1.0))
 
         encoder_tcn_hp = tcn_hyperparameters(
             hp, "encoder", filters=128, kernel_size=3, nb_stacks=1,

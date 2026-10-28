@@ -26,7 +26,7 @@
 restaurada em 21/10/2026 — mesmas origens p/ DL e baselines, 1.477)
 
 Fonte: `data/results/report_8020_itildeq/mcs.json` (gerado por
-`tests/relatorio_resultados.py`; n_boot 2000, bloco 36).
+`reports/src/relatorio_resultados.py`; n_boot 2000, bloco 36).
 
 **Model Confidence Set (α = 0,1)** — conjunto de modelos
 estatisticamente indistinguíveis do melhor:

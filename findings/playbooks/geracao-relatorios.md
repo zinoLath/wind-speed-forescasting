@@ -11,7 +11,7 @@ Fonte: skill **reports-hub**. Resumo operacional:
 ## Regenerar dados de um relatório LiDAR (~5 min GPU)
 
 ```bash
-python tests/relatorio_resultados.py --models-dir pipeline/tmp/trained_8020 \
+python reports/src/relatorio_resultados.py --models-dir pipeline/tmp/trained_8020 \
     --out-dir data/results/report_8020 --no-baselines
 ```
 
@@ -24,7 +24,7 @@ relatórios do hub leem do banco antes do `evaluation.json`.
 ## Regenerar figuras SEM GPU (a partir do banco)
 
 ```bash
-python tests/relatorio_resultados.py --from-db lidar/8020 \
+python reports/src/relatorio_resultados.py --from-db lidar/8020 \
     --out-dir data/results/report_8020 --no-baselines
 ```
 

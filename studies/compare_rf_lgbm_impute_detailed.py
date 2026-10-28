@@ -5,10 +5,10 @@ values remain one-dimensional: dir40 is represented as its wrapped offset from
 the circular mean instead of being expanded into sine/cosine features.
 
 Run Optuna and cache the best parameters before the first comparison:
-    python tests/compare_rf_lgbm_impute_detailed.py --optuna
+    python studies/compare_rf_lgbm_impute_detailed.py --optuna
 
 Reuse the cached parameters:
-    python tests/compare_rf_lgbm_impute_detailed.py
+    python studies/compare_rf_lgbm_impute_detailed.py
 """
 
 import argparse

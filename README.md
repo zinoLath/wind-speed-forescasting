@@ -12,7 +12,9 @@ dados LiDAR do Complexo Eólico Delta do Maranhão (campanha EOSOLAR).
 wind-speed-forescasting/
 ├── pipeline/                  # Pipeline em estágios (entrada principal)
 │   ├── pipeline.py            # Orquestrador (roda todos os estágios)
-│   ├── pipeline.json          # Configuração explícita do usuário
+│   ├── pipeline.json          # Config canônica (versionada; default da pipeline)
+│   ├── pipeline.local.json    # Overlay local (gitignored; via config.py set)
+│   ├── configs/               # HPs canônicos versionados (snapshot da rodada)
 │   └── pipeline.default.json  # Defaults de todos os parâmetros
 ├── src/                       # Código-fonte compartilhado
 │   ├── models/                # Wrappers Seq2Seq (registry em common.py)
@@ -20,15 +22,22 @@ wind-speed-forescasting/
 │   ├── common.py              # Fonte única: GPU, dados, WRAPPERS, métricas
 │   ├── periods.py             # Detecção/exportação de períodos completos
 │   └── utils.py               # Denoising wavelet (sym18, nível 2)
-├── scripts/                   # Automação: treinos LiDAR, Optuna distribuída,
-│   ├── lidar_7525_train.py    #   sync Overleaf, dashboard de treino
-│   ├── colab_round2.py        #   orquestrador da rodada Optuna distribuída
-│   ├── colab_monitor.py       #   watchdog/monitor da máquina local
-│   └── kaggle_runner.py       #   submissão/monitor de kernels Kaggle
-├── tests/                     # Scripts de benchmark/regressão (standalone,
-│   │                          #   SEM pytest — roda com python direto)
-│   └── relatorio_resultados.py # Gera o relatório de resultados (figuras+JSON)
+├── scripts/                   # Treinadores da rodada canônica (raiz) + subpastas
+│   ├── lidar_reval_sbsr_train.py    # lineup SBSR no protocolo reval 72,5/12,5/15
+│   ├── lidar_reval_h160_train.py    # perfil 40–160 m (rodada atual do artigo)
+│   ├── lidar_8020_sbsr_train.py     # protocolo seco 80/20 da rodada 8020-sbsr
+│   ├── articles_sync.py / paper_sync.py / sbsr_tables.py  # ferramentas do paper
+│   ├── dist/                  # Automação distribuída: Colab/Kaggle, watchers,
+│   │                          #   notificações, cron
+│   └── experiments/           # Rodadas concluídas e ablações (80/20, itildeq,
+│                              #   wfo, stride6, hpo...)
+├── tests/                     # Smoke tests (sem pytest; python direto)
+│   ├── test_wrappers_build.py #   build+predict de todos os wrappers
+│   └── test_create_sequences_equivalence.py
+├── studies/                   # Estudos, ablações, A/Bs, benchmarks e ferramentas
+│   │                          #   estatísticas (rodam com python direto)
 ├── reports/                   # HUB DE RELATÓRIOS (ver seção própria)
+│   └── src/relatorio_resultados.py  # gerador de relatórios de resultados
 ├── articles/                  # Artigos: sbr/ e steam/ (clones Overleaf,
 │   │                          #   gitignored) + knowledge/ (catálogo bibtex)
 ├── findings/                  # Base canônica de conhecimento (INDEX.md +
@@ -39,7 +48,7 @@ wind-speed-forescasting/
 ├── docs/                      # Documentação de estudos e protocolos
 ├── data/                      # Dados e outputs (gitignored)
 ├── paper/                     # Figuras/manifest do paper (sync Overleaf)
-└── OLD/                       # Código aposentado (gitignored)
+└── OLD/                       # Código aposentado (gitignored, fora do git)
 ```
 
 ## 🔧 Como Usar
@@ -55,6 +64,50 @@ source ./scripts/tf_gpu_env.sh   # OBRIGATÓRIO no Arch Linux com NVIDIA GPU
 TensorFlow 2.21 com CUDA via pip. Não há linter/CI configurado; para lint
 durante o desenvolvimento, `pyflakes` e `radon` são úteis.
 
+### Rodada canônica do artigo (reval 72,5/12,5/15)
+
+A pipeline roda **por default** o protocolo reval (split 72,5/12,5/15
+com validação, EarlyStopping + ReduceLROnPlateau, 60 épocas, seed 42,
+MSE pura). O lineup completo do artigo (feature set por wrapper) usa os
+treinadores da raiz de `scripts/`; os HPs canônicos são versionados em
+`pipeline/configs/` — nenhum artefato de `pipeline/tmp/` é necessário
+além de `data/dataset.csv`:
+
+```bash
+# 1) treino dos 4 wrappers (TCN/TCN-Bi 48 col + LSTM/LSTM-Bi 67 col)
+python scripts/lidar_reval_sbsr_train.py          # → pipeline/tmp/trained_reval_sbsr
+
+# 2) avaliação completa + relatório de resultados (DL + baselines ARIMA/RF/persist.)
+python reports/src/relatorio_resultados.py \
+    --models-dir pipeline/tmp/trained_reval_sbsr \
+    --out-dir data/results/report_reval_sbsr \
+    --trim-boundary-origins 72
+
+# 3) reconstruir o hub com o relatório novo
+python reports/src/builder.py build
+```
+
+Guia completo de revisão (mapa do código + reprodução de ponta a ponta):
+[`docs/revisao-do-codigo.md`](docs/revisao-do-codigo.md).
+
+### Persistência de configuração
+
+O canônico (`pipeline/pipeline.json`) é sempre o default da pipeline e
+nunca é editado por experimento. Ajustes locais e perfis vivem na camada
+de persistência:
+
+```bash
+python pipeline/config.py show                    # config resolvida (com fonte do overlay)
+python pipeline/config.py set train.epochs=5      # grava em pipeline.local.json (gitignored)
+python pipeline/config.py diff                    # o que o local sobrepõe ao canônico
+python pipeline/config.py profile-save 5ep        # guarda o overlay em pipeline/profiles/
+python pipeline/config.py profile-use 5ep         # reativa o perfil
+python pipeline/config.py reset                   # apaga o local e volta ao canônico
+```
+
+`--config` explícito ignora o overlay local por design (rodadas com
+precedência determinística).
+
 ### Pipeline (entrada principal)
 
 ```bash
@@ -67,16 +120,17 @@ Estágios: `optuna` (hiperparâmetros) → `train` (salva modelos +
 `model.json`) → `evaluate` (métricas e gráficos) → `impute`
 (RF/LightGBM/KNN/Kalman) → `walkforward` (validação com re-treino por
 janela). Toda a configuração vive em `pipeline/pipeline.json` (mesclada
-sobre `pipeline.default.json`; estágios aceitam `--config`). Artefatos em
-`pipeline/tmp/`. Detalhes: [`pipeline/README.md`](pipeline/README.md).
+sobre `pipeline.default.json` e o overlay local; estágios aceitam
+`--config`). Artefatos em `pipeline/tmp/`. Detalhes:
+[`pipeline/README.md`](pipeline/README.md).
 
-### Testes e benchmarks (scripts standalone)
+### Smoke tests e estudos (scripts standalone)
 
 ```bash
 python tests/test_wrappers_build.py               # build+predict de todos wrappers
 python tests/test_create_sequences_equivalence.py # vetorizado vs loop oráculo
-python tests/ab_raw_vs_wavelet.py --epochs 15     # A/B alvo cru vs wavelet
-python tests/benchmark_transformer.py --wrapper lstm_bi --epochs 40
+python studies/ab_raw_vs_wavelet.py --epochs 15   # A/B alvo cru vs wavelet
+python studies/benchmark_transformer.py --wrapper lstm_bi --epochs 40
 ```
 
 Dashboard de treino no terminal (rode em outro pane enquanto qualquer
@@ -87,17 +141,17 @@ python scripts/train_dashboard.py               # segue o run ativo
 python scripts/train_dashboard.py --list        # lista runs (ativo/parado)
 ```
 
-### Treinos LiDAR (protocolo de reamostragem 80/20)
+### Treinos LiDAR históricos (protocolo de reamostragem 80/20)
 
-Protocolo sem conjunto de validação (60 épocas, seed 42), usado no
-artigo SBSR:
+Protocolo sem conjunto de validação (60 épocas, seed 42), usado na
+rodada 8020-sbsr e estudos (hoje em `scripts/experiments/`):
 
 ```bash
-python scripts/lidar_7525_train.py --train-ratio 0.80   # 80/20 → trained_8020
-python scripts/lidar_7525_train.py --train-ratio 0.75   # 75/25 → trained_7525
-python scripts/lidar_8020_mseloss_train.py              # ablação de loss
+python scripts/experiments/lidar_7525_train.py --train-ratio 0.80   # 80/20 → trained_8020
+python scripts/experiments/lidar_7525_train.py --train-ratio 0.75   # 75/25 → trained_7525
+python scripts/experiments/lidar_8020_mseloss_train.py              # ablação de loss
 # Regenera relatório de resultados (~5 min de GPU):
-python tests/relatorio_resultados.py --models-dir pipeline/tmp/trained_8020 \
+python reports/src/relatorio_resultados.py --models-dir pipeline/tmp/trained_8020 \
     --out-dir data/results/report_8020 --no-baselines
 ```
 
@@ -127,12 +181,12 @@ notebooks do Google Colab e kernels do Kaggle — todos escrevendo no
 mesmo storage sqlite (retomável):
 
 ```bash
-python scripts/colab_round2.py all --colab-gpus 1 --kaggle-gpus 1
+python scripts/dist/colab_round2.py all --colab-gpus 1 --kaggle-gpus 1
 #   ↑ planeja, empacota dados, gera os notebooks/kernels
-python scripts/colab_round2.py local --start     # watchdog local (anti-OOM)
-python scripts/colab_round2.py kaggle            # dataset + push dos kernels
-python scripts/colab_round2.py collect --kaggle --promote   # coleta resultados
-python scripts/colab_monitor.py --watch 60       # painel da máquina local
+python scripts/dist/colab_round2.py local --start     # watchdog local (anti-OOM)
+python scripts/dist/colab_round2.py kaggle            # dataset + push dos kernels
+python scripts/dist/colab_round2.py collect --kaggle --promote   # coleta resultados
+python scripts/dist/colab_monitor.py --watch 60       # painel da máquina local
 ```
 
 Os watchdogs têm RAM calibrada por ambiente e reiniciam trials que
@@ -158,8 +212,10 @@ nunca ficam gravadas no repo. O `paper/` segue o mesmo esquema via
 
 As métricas principais comparam as previsões contra o **ws100 cru** (sem
 suavização wavelet), e o forecast rolante usa apenas janelas de histórico
-conhecido — sem valores futuros no encoder. A função de perda padrão é
-MSE ponderada por horizonte (rampa ~0,7→1,3). Números históricos do TCC
+conhecido — sem valores futuros no encoder. A rodada canônica do artigo
+usa **MSE pura** em todos os wrappers (a MSE ponderada por horizonte e a
+ITILDE-Q foram ablações concluídas; wrappers fixam a própria loss).
+Números históricos do TCC
 (MAE ≈ 0.16) vêm de um protocolo com vazamento e dataset antigo — **não
 usar**; os números honestos estão em `reports/` e `docs/`.
 
@@ -179,7 +235,7 @@ usar**; os números honestos estão em `reports/` e `docs/`.
   padrão; `step_days` menor que a janela de teste permite sobreposição)
 - **Testes estatísticos**: Diebold–Mariano (HAC + correção de Harvey),
   KSPA com bootstrap e Model Confidence Set acompanham os resultados
-  (`tests/metodos_complementares.py`, `mcs.json`)
+  (`studies/metodos_complementares.py`, `mcs.json`)
 
 ## 📚 Licença
 

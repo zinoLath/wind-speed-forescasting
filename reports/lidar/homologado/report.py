@@ -26,7 +26,7 @@ REPORT, build = report_module(
              "com early stopping e restauração do melhor val_loss. Alimenta "
              "as figuras do artigo via <code>scripts/paper_sync.py</code>.",
     badges=("75/20/5", "early stopping", "paper"),
-    regenerate=[".venv/bin/python", "tests/relatorio_resultados.py",
+    regenerate=[".venv/bin/python", "reports/src/relatorio_resultados.py",
                 "--models-dir", "pipeline/tmp/trained_compare_homologado",
                 "--out-dir", "data/results/report_homologado",
                 "--no-baselines"],

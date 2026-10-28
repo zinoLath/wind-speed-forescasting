@@ -428,8 +428,8 @@ resíduo da wavelet) e shear 40–260 — aparecem nas análises univariadas mas
 validados em treino.</li>
 </ul>
 </div>
-<p class="note">Gerado por tests/feature_study.py (análises) e
-tests/feature_sets_validation.py (validação). Métricas cruas em
+<p class="note">Gerado por studies/feature_study.py (análises) e
+studies/feature_sets_validation.py (validação). Métricas cruas em
 data/results/features_study/study_tables.json e pipeline/tmp/fs_*/metrics.json.</p>
 </body></html>"""
 

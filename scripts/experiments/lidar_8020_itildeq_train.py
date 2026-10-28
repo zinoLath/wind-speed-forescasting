@@ -23,8 +23,8 @@ O que muda por família:
 O patch de perda é feito pelo atributo ``loss_mode_override`` dos wrappers
 (código canônico intocado).
 
-    python scripts/lidar_8020_itildeq_train.py
-    python tests/relatorio_resultados.py \\
+    python scripts/experiments/lidar_8020_itildeq_train.py
+    python reports/src/relatorio_resultados.py \\
         --models-dir pipeline/tmp/trained_8020_itildeq \\
         --out-dir data/results/report_8020_itildeq
 """
@@ -35,7 +35,7 @@ import sys
 import time
 from pathlib import Path
 
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
@@ -218,7 +218,7 @@ def main():
         print(f"[{wrapper_key}] MSE teste={metrics['mse']:.4f}")
 
     print(f"\nModelos: {args.output_dir}")
-    print("Relatorio: python tests/relatorio_resultados.py --models-dir "
+    print("Relatorio: python reports/src/relatorio_resultados.py --models-dir "
           "pipeline/tmp/trained_8020_itildeq --out-dir "
           "data/results/report_8020_itildeq")
 

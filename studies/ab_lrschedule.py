@@ -6,7 +6,7 @@ duas condições de scheduling, seed 42, 150 épocas, patience 12, decoder
 direct, com normalização. Métricas no teste contra o ws100 bruto (denso e
 rolling h=36). Condições já concluídas são puladas (retomada).
 
-Uso: python tests/ab_lrschedule.py [--wrappers lstm lstm_bi tcn tcn_bi]
+Uso: python studies/ab_lrschedule.py [--wrappers lstm lstm_bi tcn tcn_bi]
 """
 import argparse
 import json

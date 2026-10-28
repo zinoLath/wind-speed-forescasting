@@ -34,7 +34,7 @@ img/ copiadas no build + meta.json com título/descrição).
 > `reports/<categoria>/<nome>/`**. Nunca criar relatório em `docs/`, na
 > raiz, em `data/results/` ou em qualquer outra pasta. `docs/` é
 > documentação; `data/results/` guarda artefatos de dados, não relatórios.
-> Geradores (`tests/*.py`, `scripts/*.py`) que produzem relatório escrevem
+> Geradores (`studies/*.py`, `scripts/**/*.py`) que produzem relatório escrevem
 > DIRETAMENTE em `reports/<categoria>/<nome>/` — nunca em `data/results/`.
 
 ## Estado por relatório (reports/state.json)
@@ -173,11 +173,23 @@ Os relatórios LiDAR não são só figuras: `reports/src/resultados.py` monta
 
 ## Regenerar vs retreinar (relatórios LiDAR)
 
-- **Regenerar** = `tests/relatorio_resultados.py --models-dir ... --out-dir
-  ...` (~5 min GPU: reavalia os pesos e recria figures/evaluation.json)
-  e depois rebuild do site.
+- **Fonte dos dados**: os relatórios LiDAR leem primeiro o **banco de
+  runs** `data/predictions.db` (resolvido por `report_id` =
+  `categoria/nome`; badge "banco: run #N" na página) e só caem para
+  `evaluation.json` em rodadas antigas sem run gravada. Detalhes:
+  finding `predicoes-db`.
+- **Processo canônico (sempre)**: toda avaliação grava a run no banco —
+  comportamento padrão de `reports/src/relatorio_resultados.py`; `--no-db` é
+  só para depuração (nunca em runbook). Cada run carrega
+  `source_file`/`source_cmd`/`out_file` (reprodutibilidade) e os modelos
+  levam `seed`.
+- **Regenerar** = `reports/src/relatorio_resultados.py --models-dir ... --out-dir
+  ...` (~5 min GPU: reavalia os pesos, grava a run no banco — substituindo
+  a do mesmo report_id — e recria figures/evaluation.json) e depois rebuild
+  do site. Variante sem GPU: `--from-db <id|report_id>` regenera
+  figuras/DM/MCS a partir das predições gravadas.
 - **Regenerar com retreino** = treina de novo
-  (`scripts/lidar_7525_train.py --train-ratio 0.80` →
+  (`scripts/experiments/lidar_7525_train.py --train-ratio 0.80` →
   `pipeline/tmp/trained_8020`) e depois regenera. Retreino sobrescreve os
   modelos canônicos — existe backup em `pipeline/tmp/trained_8020_backup_*`.
 - O relatório `treinamento/8020` re-gera as curvas a cada build (lê
@@ -200,16 +212,16 @@ Estavam soltos em `data/results/` e hoje vivem no hub (geradores
 atualizados para escrever direto lá):
 
 - `resultados/investigacao` (era `data/results/investigacao/`;
-  `tests/build_investigacao.py`);
+  `studies/build_investigacao.py`);
 - `resultados/features_study` (era `data/results/features_study/`;
-  `tests/feature_study.py` + `tests/build_feature_study_report.py`);
+  `studies/feature_study.py` + `studies/build_feature_study_report.py`);
 - `resultados/context-mode-ablation` (era `context_mode_ablation.md`);
 - `imputacao/wfo-lightgbm` e `imputacao/wfo-lightgbm-2m` (eram
   `data/results/wfo_lightgbm{,_2m}/relatorio.html`;
-  `scripts/wfo_lightgbm_report.py`);
+  `scripts/experiments/wfo_lightgbm_report.py`);
 - `protocolo/persistence-gate-ab` (era
   `data/results/report/ab_persistence_gate.html`;
-  `tests/ab_persistence_gate.py`).
+  `studies/ab_persistence_gate.py`).
 
 Os HTML legados `relatorio_resultados.html` (em `data/results/report*/`)
 e `relatorio_metodos.{md,html}` foram **removidos**: as páginas do hub

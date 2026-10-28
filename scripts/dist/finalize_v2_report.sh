@@ -11,7 +11,7 @@
 # Log: pipeline/tmp/finalize_v2.log | Concluido: pipeline/tmp/finalize_v2.done
 
 set -u
-cd "$(dirname "$0")/.."
+cd "$(dirname "$0")/../.."
 
 LOG="${LOG:-pipeline/tmp/finalize_v2.log}"
 log() { echo "[$(date '+%F %T')] $*" | tee -a "$LOG"; }
@@ -146,12 +146,12 @@ print("config de compare gerada em /tmp/opencode/report_compare.json")
 PY
 
 log "treinando os 4 wrappers com os hp do v2..."
-python tests/train_compare_tcn.py --wrappers lstm lstm_bi tcn tcn_bi \
+python studies/train_compare_tcn.py --wrappers lstm lstm_bi tcn tcn_bi \
     --config /tmp/opencode/report_compare.json >>"$LOG" 2>&1 \
     || log "train_compare terminou com erro"
 
 log "regenerando o relatorio HTML..."
-python tests/relatorio_resultados.py --retrain >>"$LOG" 2>&1 \
+python reports/src/relatorio_resultados.py --retrain >>"$LOG" 2>&1 \
     || log "relatorio terminou com erro"
 
 log "CONCLUIDO"

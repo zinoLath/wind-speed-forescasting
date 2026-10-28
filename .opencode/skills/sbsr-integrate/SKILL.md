@@ -21,7 +21,7 @@ python -c "import json;d=json.load(open('data/results/<REPORT>/evaluation.json')
 ```
 
 - Artefatos faltando (ou baselines ausentes na rodada): **regenerar
-  primeiro** com `python tests/relatorio_resultados.py --models-dir
+  primeiro** com `python reports/src/relatorio_resultados.py --models-dir
   pipeline/tmp/trained_8020 --out-dir data/results/<REPORT>` **sem**
   `--no-baselines` (assim baselines e DL saem na mesma grade de
   origens; fluxo de treino completo = skill `lidar-retrain`).

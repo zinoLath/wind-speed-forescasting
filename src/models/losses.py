@@ -79,7 +79,7 @@ def itilde_q(output_steps, alpha=0.3, beta=0.5, gamma=0.1):
     - Dong Sheng et al. 2026 (ITILDE-Q, Eq. 15; convenção usada aqui):
       α = 0,5, β = 0,5, γ = 0,5.
     Os defaults do repo (0,3/0,5/0,1) não são de nenhum dos dois; busca
-    empírica em scripts/itildeq_terms_kaggle.py.
+    empírica em scripts/experiments/itildeq_terms_kaggle.py.
 
     Observação: a perda NÃO zera para predição perfeita — o termo de fase
     penaliza a energia nas frequências não-dominantes (‖F(ŷ)‖), que é a

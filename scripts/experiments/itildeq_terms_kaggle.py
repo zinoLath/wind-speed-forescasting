@@ -5,9 +5,9 @@ canônicos da rodada 8020-itildeq. Modo padrão: grade OFAT (9 combos) na
 LSTM. Modo ``--micro``: coeficientes muito pequenos (pouca influência
 sobre o MSE) nas DUAS LSTMs (kernel a = lstm, kernel b = lstm_bi). Uso:
 
-    python scripts/itildeq_terms_kaggle.py push [--micro] [--dry-run]
-    python scripts/itildeq_terms_kaggle.py status [--micro]
-    python scripts/itildeq_terms_kaggle.py collect [--micro]
+    python scripts/experiments/itildeq_terms_kaggle.py push [--micro] [--dry-run]
+    python scripts/experiments/itildeq_terms_kaggle.py status [--micro]
+    python scripts/experiments/itildeq_terms_kaggle.py collect [--micro]
 
 Auth: ``~/.kaggle/access_token`` (bearer) ou ``kaggle.json``.
 """
@@ -21,7 +21,7 @@ import time
 import zipfile
 from pathlib import Path
 
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
@@ -75,7 +75,7 @@ def _fmt(combos):
 
 
 def _cli():
-    from scripts.colab_round2 import _kaggle_run, _kaggle_user
+    from scripts.dist.colab_round2 import _kaggle_run, _kaggle_user
     return _kaggle_run, _kaggle_user
 
 
@@ -129,7 +129,7 @@ def _dataset(args, zip_path):
 
 def _push_kernels(args, full_id):
     _run, user = _cli()
-    from scripts.kaggle_runner import KERNEL_TEMPLATE
+    from scripts.dist.kaggle_runner import KERNEL_TEMPLATE
 
     kernels = kernels_for(args)
     if getattr(args, "micro", False):
@@ -140,7 +140,7 @@ def _push_kernels(args, full_id):
                 for slug, combos in zip(kernels, [COMBOS_A, COMBOS_B])]
     for slug, combos, wrapper in jobs:
         wflag = f"--wrapper {wrapper} " if wrapper != "lstm" else ""
-        command = (f"python scripts/itildeq_terms_search_train.py "
+        command = (f"python scripts/experiments/itildeq_terms_search_train.py "
                    f"{wflag}--combos '{combos}' --output-dir {OUTPUT_GLOB}")
         script = KERNEL_TEMPLATE.format(
             command=command,
@@ -183,9 +183,9 @@ def cmd_push(args):
     full_id = _dataset(args, zip_path)
     _push_kernels(args, full_id)
     if not args.dry_run:
-        print("Acompanhe com: python scripts/itildeq_terms_kaggle.py status "
+        print("Acompanhe com: python scripts/experiments/itildeq_terms_kaggle.py status "
               "[--micro]")
-        print("Ao terminar: python scripts/itildeq_terms_kaggle.py collect "
+        print("Ao terminar: python scripts/experiments/itildeq_terms_kaggle.py collect "
               "[--micro]")
 
 
@@ -216,7 +216,12 @@ def cmd_collect(args):
 
     out_dir = PROJECT_ROOT / "pipeline" / "tmp" / OUTPUT_SUBDIR
     for json_path in sorted(out_dir.glob("combo_*.json")):
-        results.append(json.loads(json_path.read_text(encoding="utf-8")))
+        rec = json.loads(json_path.read_text(encoding="utf-8"))
+        if "wrapper" not in rec:
+            rec["wrapper"] = ("lstm_bi"
+                              if json_path.stem.startswith("combo_lstm_bi_")
+                              else "lstm")
+        results.append(rec)
     if not results:
         raise SystemExit("nenhum resultado restaurado")
 

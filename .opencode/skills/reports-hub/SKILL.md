@@ -49,7 +49,7 @@ favorito/renomear caem no localStorage (`hubstate.v1`) via `app.js`.
   `report.py`/`report.md`/`report.html` + figuras) fica em
   `reports/<categoria>/<nome>/`. Nunca criar relatório em `docs/`, na raiz
   ou em `data/results/` — `docs/` é documentação e `data/results/` guarda
-  artefatos de dados. Geradores (`tests/`, `scripts/`) que produzem
+  artefatos de dados. Geradores (`studies/`, `scripts/`) que produzem
   relatório escrevem DIRETO em `reports/` (os que escreviam em
   `data/results/` já foram migrados — ver agents/reports.md).
 - **HTML standalone**: `report.html` que é um documento completo
@@ -75,7 +75,7 @@ favorito/renomear caem no localStorage (`hubstate.v1`) via `app.js`.
   `reports/src/resultados.py:report_module`.
 - **Ordem no hub/dropdown** = ordem alfabética das pastas; sobrescreva com
   `REPORT["order"]`/meta `"order"`.
-- `regenerate` dos relatórios LiDAR roda `tests/relatorio_resultados.py`
+- `regenerate` dos relatórios LiDAR roda `reports/src/relatorio_resultados.py`
   (~5 min de GPU). `retrain` sobrescreve modelos canônicos — confira
   backup em `pipeline/tmp/trained_8020_backup_*` antes (skill
   `lidar-retrain` cobre o fluxo completo de retreino).

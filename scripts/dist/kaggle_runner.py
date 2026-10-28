@@ -4,21 +4,21 @@ Ciclo completo sem sair do terminal, usando a CLI oficial do Kaggle
 (`pip install kaggle` + token em ~/.kaggle/kaggle.json):
 
     # 1. Empacota o projeto (codigo + dataset.csv + progresso optuna_nogate)
-    python scripts/kaggle_runner.py package
+    python scripts/dist/kaggle_runner.py package
 
     # 2. Cria (ou versiona) o Dataset no Kaggle com o pacote
-    python scripts/kaggle_runner.py dataset --message "snapshot do estudo"
+    python scripts/dist/kaggle_runner.py dataset --message "snapshot do estudo"
 
     # 3. Empurra um kernel que executa um comando do pipeline na GPU do Kaggle
-    python scripts/kaggle_runner.py push \
+    python scripts/dist/kaggle_runner.py push \
         --command "python pipeline/step_optuna.py --config pipeline/pipeline.optuna_nogate.json --wrappers tcn" \
         --slug optuna-nogate-tcn
 
     # 4. Acompanha (ou usa --wait para bloquear ate terminar)
-    python scripts/kaggle_runner.py status --slug optuna-nogate-tcn
+    python scripts/dist/kaggle_runner.py status --slug optuna-nogate-tcn
 
     # 5. Baixa o resultado e restaura o progresso localmente
-    python scripts/kaggle_runner.py output --slug optuna-nogate-tcn
+    python scripts/dist/kaggle_runner.py output --slug optuna-nogate-tcn
 
 `run-all` encadeia 1-5 com polling. O kernel gerado descompacta o pacote em
 /kaggle/working, executa o comando informado e zipa os outputs de volta.
@@ -40,14 +40,14 @@ import time
 import zipfile
 from pathlib import Path
 
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DIST = PROJECT_ROOT / "dist"
 KAGGLE_DIR = DIST / "kaggle"
 DEFAULT_DATASET_SLUG = "wind-speed-forecasting"
 DEFAULT_DATASET_TITLE = "wind speed forecasting (seq2seq lidar)"
 DEFAULT_OUTPUT_GLOB = "pipeline/tmp/optuna_nogate"
 
-KERNEL_TEMPLATE = '''"""Kernel gerado por scripts/kaggle_runner.py — NAO editar a mao."""
+KERNEL_TEMPLATE = '''"""Kernel gerado por scripts/dist/kaggle_runner.py — NAO editar a mao."""
 import glob
 import os
 import shutil
@@ -99,7 +99,7 @@ else:
     # (kaggle_optuna_*, optuna_nogate_v2, ...) que o dataset acumulou.
     src_root = next(
         (r for r in sorted(roots)
-         if (r / "scripts" / "kaggle_round2_worker.py").is_file()),
+         if (r / "scripts" / "dist" / "kaggle_round2_worker.py").is_file()),
         sorted(roots)[0],
     )
     print("repo extraido pelo Kaggle em:", src_root, "-> copiando")
@@ -108,7 +108,7 @@ else:
 
 # Ultimo recurso: repo incompleto -> clona o publico do GitHub (o kernel tem
 # internet). dataset.csv (gitignored) vem do input.
-if not (REPO / "scripts" / "kaggle_round2_worker.py").is_file():
+if not (REPO / "scripts" / "dist" / "kaggle_round2_worker.py").is_file():
     print("repo sem o worker da rodada; clonando do GitHub")
     import tempfile
     tmp = REPO.parent / "repo_clone"
@@ -239,7 +239,7 @@ def run(cmd, **kwargs):
 
 
 def cmd_package(args):
-    result = run(["bash", PROJECT_ROOT / "scripts" / "kaggle_package.sh"])
+    result = run(["bash", PROJECT_ROOT / "scripts" / "dist" / "kaggle_package.sh"])
     if result.returncode != 0:
         raise SystemExit(result.returncode)
     zips = sorted(DIST.glob("kaggle_optuna_*.zip"))
@@ -325,7 +325,7 @@ def cmd_push(args):
     if result.returncode != 0:
         raise SystemExit(result.returncode)
     print(f"kernel {username}/{args.slug} enviado. Acompanhe com:")
-    print(f"  python scripts/kaggle_runner.py status --slug {args.slug}")
+    print(f"  python scripts/dist/kaggle_runner.py status --slug {args.slug}")
 
 
 def cmd_status(args):

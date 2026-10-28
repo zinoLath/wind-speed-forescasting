@@ -152,7 +152,7 @@ def run(config):
     wrapper.build(common.FixedHyperParameters(metadata["hyperparameters"]))
     wrapper.model.load_weights(model_path)
 
-    # Same origin grid as the baselines (tests/baseline_arima_rf.py): the
+    # Same origin grid as the baselines (studies/baseline_arima_rf.py): the
     # first origin is the first test row, with the encoder consuming the last
     # input_steps rows of the val->test boundary. Feeding test_df alone would
     # burn input_steps test rows as warm-up and score the DL models against

@@ -1,7 +1,7 @@
 """Generate a self-contained HTML page (docs/leak_demo.html) that explains the
 data leakage in the leaky rolling-forecast protocol, using real wind data.
 
-Run:  python tests/make_leak_demo_html.py
+Run:  python studies/make_leak_demo_html.py
 """
 import json
 import sys
@@ -275,7 +275,7 @@ for i in range(len(test_data) - output_steps + 1):
 
 </main>
 <footer>
-  Gerado por <code>tests/make_leak_demo_html.py</code> · dados: data/dataset.csv (ws100, últimas 132 linhas) ·
+  Gerado por <code>studies/make_leak_demo_html.py</code> · dados: data/dataset.csv (ws100, últimas 132 linhas) ·
   input_steps=12, output_steps=12 · plotly.js via CDN
 </footer>
 

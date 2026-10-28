@@ -1,13 +1,13 @@
 """Busca curta dos coeficientes da perda ITILDE-Q (α, β, γ) — roda NO
 KERNEL do Kaggle via pacote colab_round2 (usado por
-``scripts/itildeq_terms_kaggle.py``).
+``scripts/experiments/itildeq_terms_kaggle.py``).
 
 Para cada combo ``alpha:beta:gamma`` treina uma LSTM com os HPs canônicos
 da rodada ``8020-itildeq`` (embutidos abaixo; 80/20 sem validação, 60
 épocas, seed 42) e avalia all + h=36 + rolling contra o ``ws100`` bruto.
 Salva um JSON por combo em ``--output-dir``.
 
-    python scripts/itildeq_terms_search_train.py \
+    python scripts/experiments/itildeq_terms_search_train.py \
         --combos "0.3:0.5:0.1;0.1:0.5:0.1" \
         --output-dir pipeline/tmp/itildeq_terms_search
 """
@@ -20,7 +20,7 @@ from pathlib import Path
 
 import numpy as np
 
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
@@ -106,6 +106,8 @@ def main():
                     help="lista 'a:b:g;a:b:g;...'")
     ap.add_argument("--output-dir", default="pipeline/tmp/itildeq_terms_search")
     ap.add_argument("--wrapper", choices=("lstm", "lstm_bi"), default="lstm")
+    ap.add_argument("--save-models", action="store_true",
+                    help="salva model.keras + model.json junto do JSON")
     args = ap.parse_args()
 
     tf = common.setup_tensorflow(True)
@@ -149,7 +151,40 @@ def main():
                     callbacks=None, use_validation=False)
         elapsed = time.perf_counter() - started
 
-        result = {"alpha": alpha, "beta": beta, "gamma": gamma,
+        if args.save_models:
+            mdir = out_dir / f"model_{args.wrapper}_{tag}"
+            mdir.mkdir(parents=True, exist_ok=True)
+            wrapper.model.save(mdir / "model.keras")
+            meta = {
+                "wrapper_key": args.wrapper,
+                "name": wrapper.name,
+                "persistence_gate": False,
+                "gate_mode": "static",
+                "decoder_mode": getattr(wrapper, "decoder_mode", "direct"),
+                "target_mode": getattr(wrapper, "target_mode", "absolute"),
+                "normalize": bool(getattr(wrapper, "normalize", True)),
+                "hyperparameters": dict(hp),
+                "params_source": "busca de coeficientes itilde-q",
+                "input_steps": 72,
+                "output_steps": OUTPUT_STEPS,
+                "target_col": "ws100_wavelet",
+                "denoise": ["ws100"],
+                "denoise_level": 2,
+                "loss": "itilde_q",
+                "loss_coeffs": {"alpha": alpha, "beta": beta,
+                                "gamma": gamma},
+                "training": {"epochs_run": EPOCHS,
+                             "epochs_requested": EPOCHS, "seed": SEED,
+                             "patience": 0, "final_loss": None,
+                             "best_val_loss": None,
+                             "final_val_loss": None,
+                             "training_time_sec": None},
+                "dataset": {"train_ratio": 0.80, "val_ratio": 0.0,
+                            "split": "80/20 sem validacao (busca termos)"},
+            }
+            common.write_json(mdir / "model.json", meta)
+        result = {"wrapper": args.wrapper, "alpha": alpha,
+                  "beta": beta, "gamma": gamma,
                   "epochs": EPOCHS, "seed": SEED, "elapsed_sec": elapsed,
                   "hp": dict(hp), **evaluate(wrapper, dataset, val_end)}
         common.write_json(json_path, result)

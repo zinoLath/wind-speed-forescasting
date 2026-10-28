@@ -9,9 +9,9 @@ distribuição do erro.
 
 O desenho roda em kernels separados no Kaggle (um wrapper por GPU):
 
-    python scripts/lidar_8020_itildeq_seeds_train.py --wrappers lstm \\
+    python scripts/experiments/lidar_8020_itildeq_seeds_train.py --wrappers lstm \\
         --seeds 42 43 44 45 46 47 48 49 50 51
-    python scripts/lidar_8020_itildeq_seeds_train.py --wrappers lstm_bi \\
+    python scripts/experiments/lidar_8020_itildeq_seeds_train.py --wrappers lstm_bi \\
         --seeds 42 43 44 45 46 47 48 49 50 51
 
 Saída: ``pipeline/tmp/trained_8020_itildeq_seeds/<wrapper>/seed_<seed>/``
@@ -28,7 +28,7 @@ from pathlib import Path
 
 import pandas as pd
 
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
@@ -301,7 +301,7 @@ def main():
               f"{summary_path}", flush=True)
 
     print(f"\nModelos e predições em: {OUTPUT_DIR}")
-    print("Análise: python tests/itildeq_seeds_8020.py "
+    print("Análise: python studies/itildeq_seeds_8020.py "
           f"--models-dir {OUTPUT_DIR} --out-dir "
           "data/results/itildeq_seeds_8020")
 

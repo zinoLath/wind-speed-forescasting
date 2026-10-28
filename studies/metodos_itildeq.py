@@ -30,7 +30,7 @@ Somente CPU leves + GPU para reconstruir as predições (mesma avaliação do
 relatório canônico).
 
     source .venv/bin/activate && source scripts/tf_gpu_env.sh
-    python tests/metodos_itildeq.py \
+    python studies/metodos_itildeq.py \
         --models-dir pipeline/tmp/trained_8020_itildeq \
         --out-dir data/results/metodos_itildeq
 """
@@ -41,7 +41,7 @@ from itertools import combinations
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-for path in (PROJECT_ROOT, PROJECT_ROOT / "tests"):
+for path in (PROJECT_ROOT, PROJECT_ROOT / "reports" / "src"):
     if str(path) not in sys.path:
         sys.path.insert(0, str(path))
 

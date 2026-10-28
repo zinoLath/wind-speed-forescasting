@@ -11,7 +11,7 @@ Uso como biblioteca:
            desktop=True)
 
 Uso como CLI:
-    python scripts/wfo_notify.py --desktop --title "WFO teste" \
+    python scripts/experiments/wfo_notify.py --desktop --title "WFO teste" \
         --priority high "mensagem"
 """
 

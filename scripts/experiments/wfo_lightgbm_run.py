@@ -12,10 +12,10 @@ para defaults embutidos. Metricas de topo contra ws100 bruto; splits
 observado vs imputado ficam nas colunas de flag das predicoes.
 
 Usage:
-    python scripts/wfo_lightgbm_run.py                        # 4 wrappers
-    python scripts/wfo_lightgbm_run.py --wrappers lstm        # um wrapper
-    python scripts/wfo_lightgbm_run.py --finalize-only        # so agregar
-    python scripts/wfo_lightgbm_run.py --max-windows 1 --epochs 2  # smoke
+    python scripts/experiments/wfo_lightgbm_run.py                        # 4 wrappers
+    python scripts/experiments/wfo_lightgbm_run.py --wrappers lstm        # um wrapper
+    python scripts/experiments/wfo_lightgbm_run.py --finalize-only        # so agregar
+    python scripts/experiments/wfo_lightgbm_run.py --max-windows 1 --epochs 2  # smoke
 """
 
 import argparse
@@ -26,7 +26,7 @@ import sys
 import time
 from pathlib import Path
 
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
@@ -354,7 +354,7 @@ def main():
     if not proto.SERIES_CSV.is_file() or not proto.FLAGS_CSV.is_file():
         raise SystemExit(
             f"{proto.SERIES_CSV} / {proto.FLAGS_CSV} ausentes — rode "
-            "scripts/wfo_lightgbm_prepare.py primeiro."
+            "scripts/experiments/wfo_lightgbm_prepare.py primeiro."
         )
 
     tf = common.setup_tensorflow(True)

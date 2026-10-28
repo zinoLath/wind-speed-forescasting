@@ -1,6 +1,6 @@
 """Análise do estudo de seeds — LSTM / LSTM-Bi com ITILDE-Q (80/20).
 
-Lê as predições gravadas por ``scripts/lidar_8020_itildeq_seeds_train.py`` e
+Lê as predições gravadas por ``scripts/experiments/lidar_8020_itildeq_seeds_train.py`` e
 responde, para cada arquitetura:
 
 - qual seed teve o **melhor** e o **pior** desempenho (MSE/MAE/R²/skill);
@@ -12,7 +12,7 @@ responde, para cada arquitetura:
 
 Não precisa de GPU (pandas/numpy/scipy/matplotlib):
 
-    python tests/itildeq_seeds_8020.py \\
+    python studies/itildeq_seeds_8020.py \\
         --models-dir pipeline/tmp/trained_8020_itildeq_seeds \\
         --out-dir data/results/itildeq_seeds_8020
 """
@@ -24,7 +24,7 @@ import sys
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-for path in (PROJECT_ROOT, PROJECT_ROOT / "tests"):
+for path in (PROJECT_ROOT,):
     if str(path) not in sys.path:
         sys.path.insert(0, str(path))
 

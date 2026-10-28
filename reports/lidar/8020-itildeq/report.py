@@ -1,7 +1,7 @@
 """Relatório de resultados — 80/20 rodada mista (ITILDE-Q + MSE/C′).
 
 Mesmo protocolo 80/20 da reamostragem canônica, mas com duas famílias
-treinadas de formas distintas (scripts/lidar_8020_itildeq_train.py →
+treinadas de formas distintas (scripts/experiments/lidar_8020_itildeq_train.py →
 trained_8020_itildeq):
 
 - LSTM / LSTM-Bi: HPs do HPO 80/20 + loss ITILDE-Q (shape-aware:
@@ -38,10 +38,10 @@ REPORT, build = report_module(
              "dilatações estáticas até 36 passos (6 h). Baselines ARIMA, "
              "Random Forest e persistência entram na comparação e no MCS.",
     badges=("80/20", "rodada mista", "ITILDE-Q", "MSE + C′", "baselines"),
-    regenerate=[".venv/bin/python", "tests/relatorio_resultados.py",
+    regenerate=[".venv/bin/python", "reports/src/relatorio_resultados.py",
                 "--models-dir", "pipeline/tmp/trained_8020_itildeq",
                 "--out-dir", "data/results/report_8020_itildeq"],
-    retrain=[".venv/bin/python", "scripts/lidar_8020_itildeq_train.py",
+    retrain=[".venv/bin/python", "scripts/experiments/lidar_8020_itildeq_train.py",
              "--alpha", "0.3", "--beta", "0.5", "--gamma", "0.1"],
     info=[("Protocolo", "80/20 sem validação"),
           ("LSTM / LSTM-Bi", "HPs do HPO 80/20 + ITILDE-Q (α=0,3 · β=0,5 · γ=0,1)"),

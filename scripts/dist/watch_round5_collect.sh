@@ -31,7 +31,7 @@ while :; do
     esac
     case "$S1$S2" in
         *ERROR*|*CANCEL*) log "kernel em erro — coletor encerra sem coletar"; \
-            "$ROOT/.venv/bin/python" "$ROOT/scripts/wfo_notify.py" \
+            "$ROOT/.venv/bin/python" "$ROOT/scripts/experiments/wfo_notify.py" \
               --title "Wind: round5" --tags warning --desktop \
               "kernel Kaggle em erro: $S1 | $S2" >/dev/null 2>&1; exit 1 ;;
     esac
@@ -43,7 +43,7 @@ log "ambos COMPLETE — coletando"
 OUT=$(bash -lc "
     source '$ROOT/.venv/bin/activate' && cd '$ROOT' &&
     cp -r pipeline/tmp/optuna pipeline/tmp/optuna_backup_\$(date +%Y%m%d%H%M) 2>/dev/null;
-    python scripts/colab_round2.py collect --kaggle --promote &&
+    python scripts/dist/colab_round2.py collect --kaggle --promote &&
     python reports/src/builder.py build
 " 2>&1)
 RC=$?
@@ -56,7 +56,7 @@ if [ "$RC" -eq 0 ]; then
 else
     log "ERRO na coleta (rc=$RC) — ver log"; MSG="round5: FALHA na coleta (rc=$RC)"; TAGS="warning"
 fi
-"$ROOT/.venv/bin/python" "$ROOT/scripts/wfo_notify.py" \
+"$ROOT/.venv/bin/python" "$ROOT/scripts/experiments/wfo_notify.py" \
     --title "Wind: optuna round5" --priority high --tags "$TAGS" --desktop \
     "$MSG" >/dev/null 2>&1
 exit "$RC"

@@ -6,8 +6,8 @@ trials feitos, melhor skill, nº do melhor trial, tempo decorrido e ETA.
 
 Idempotente por marco (estado em $XDG_RUNTIME_DIR/exp-notify).
 
-    python scripts/round4b_progress_notify.py            # só notifica em marco novo
-    python scripts/round4b_progress_notify.py --force    # notifica agora (teste)
+    python scripts/dist/round4b_progress_notify.py            # só notifica em marco novo
+    python scripts/dist/round4b_progress_notify.py --force    # notifica agora (teste)
 """
 
 import argparse
@@ -17,7 +17,7 @@ import sys
 import time
 from pathlib import Path
 
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 

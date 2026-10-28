@@ -12,9 +12,9 @@ crash sem auto-restart, stall de progresso, loop de reinicios, kernel
 Kaggle em erro/ concluido, corrida inteira finalizada.
 
 Usage:
-    python scripts/wfo_lightgbm_monitor.py                # agenda completo
-    python scripts/wfo_lightgbm_monitor.py --once         # uma verificacao
-    python scripts/wfo_lightgbm_monitor.py --max-hours 14 # teto de runtime
+    python scripts/experiments/wfo_lightgbm_monitor.py                # agenda completo
+    python scripts/experiments/wfo_lightgbm_monitor.py --once         # uma verificacao
+    python scripts/experiments/wfo_lightgbm_monitor.py --max-hours 14 # teto de runtime
 """
 
 import argparse
@@ -25,7 +25,7 @@ import sys
 import time
 from pathlib import Path
 
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
@@ -113,8 +113,8 @@ class Monitor:
                     progress = json.load(handle).get("wrappers", {})
             except json.JSONDecodeError:
                 log("AVISO: progress.json corrompido")
-        runners = pgrep("scripts/wfo_lightgbm_run.py")
-        watchdogs = pgrep("scripts/wfo_lightgbm_watchdog.sh")
+        runners = pgrep("scripts/experiments/wfo_lightgbm_run.py")
+        watchdogs = pgrep("scripts/experiments/wfo_lightgbm_watchdog.sh")
         lines = [
             f"local: runner={'vivo' if runners else 'MORTO'} "
             f"watchdog={'vivo' if watchdogs else 'MORTO'}"
@@ -144,7 +144,7 @@ class Monitor:
                 elif self.once_seen("local-dead-nowatchdog"):
                     notify("WFO monitor CRASH",
                            f"❌ {wrapper}: runner MORTO e watchdog MORTO — nada vai "
-                           "reiniciar sozinho. Inicie: bash scripts/wfo_lightgbm_watchdog.sh",
+                           "reiniciar sozinho. Inicie: bash scripts/experiments/wfo_lightgbm_watchdog.sh",
                            priority="urgent", tags="rotating_light")
                     log(f"{wrapper}: CRASH sem auto-restart (runner+watchdog mortos)")
             elif runners and age_min > STALL_MIN:
@@ -179,7 +179,7 @@ class Monitor:
                 if self.once_seen(f"kaggle-complete-{wrapper}"):
                     notify("WFO Kaggle OK",
                            f"📦 Kaggle {wrapper}: kernel COMPLETE — traga com "
-                           "python scripts/wfo_lightgbm_kaggle.py collect")
+                           "python scripts/experiments/wfo_lightgbm_kaggle.py collect")
                     log(f"kaggle {wrapper}: COMPLETE")
             elif state in ("ERROR", "CANCELLED"):
                 if self.once_seen(f"kaggle-error-{wrapper}"):
@@ -193,7 +193,7 @@ class Monitor:
                 if time.time() - first > 3600 and self.once_seen(f"kaggle-unknown-{wrapper}"):
                     notify("WFO Kaggle status",
                            f"❓ Kaggle {wrapper}: sem status ha 1 h (kernel nao empurrado "
-                           "ou auth). Rode: python scripts/wfo_lightgbm_kaggle.py push "
+                           "ou auth). Rode: python scripts/experiments/wfo_lightgbm_kaggle.py push "
                            f"--wrappers {wrapper}",
                            priority="high", tags="grey_question")
                     log(f"kaggle {wrapper}: UNKNOWN > 1h")
@@ -270,8 +270,8 @@ def main():
             log("tudo concluido!")
             notify("WFO concluido",
                    "🏁 Tudo finalizado (local + Kaggle). Rode: "
-                   "python scripts/wfo_lightgbm_kaggle.py collect && "
-                   "python scripts/wfo_lightgbm_report.py --open")
+                   "python scripts/experiments/wfo_lightgbm_kaggle.py collect && "
+                   "python scripts/experiments/wfo_lightgbm_report.py --open")
             return
         if (time.time() - start) / 3600 > args.max_hours:
             log("teto de runtime atingido; encerrando o monitor (a corrida continua).")

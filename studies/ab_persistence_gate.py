@@ -12,7 +12,7 @@ exclusivo do gate dinâmico: o valor médio de sigmoid(g[t,h]) por horizonte no
 conjunto de teste, extraído dos pesos da camada.
 
 Executar a partir da raiz do projeto:
-    python tests/ab_persistence_gate.py
+    python studies/ab_persistence_gate.py
 
 Saída:
     reports/protocolo/persistence-gate-ab/images/ab_*.png
@@ -468,7 +468,7 @@ def build_html(sides, keys, cards, body_parts):
             "</header>\n"
             f'<div class="container">\n<div class="cards">{cards}</div>\n'
             f"{body_parts}\n</div>\n"
-            "<footer>Relatório gerado automaticamente por tests/ab_persistence_gate.py · "
+            "<footer>Relatório gerado automaticamente por studies/ab_persistence_gate.py · "
             "mesma semente (42) e hiperparâmetros Optuna nas três variantes · "
             "métricas contra ws100 bruto</footer>\n"
             f"<script>{JS}</script>\n</body>\n</html>")
@@ -495,7 +495,7 @@ def main():
             sides[sid] = data
     if len(sides) < 2:
         raise SystemExit(
-            "Avaliações ausentes. Rode tests/train_compare_tcn.py nas variantes "
+            "Avaliações ausentes. Rode studies/train_compare_tcn.py nas variantes "
             "(--out-base distintos) antes deste relatório."
         )
     keys = common_keys(sides)

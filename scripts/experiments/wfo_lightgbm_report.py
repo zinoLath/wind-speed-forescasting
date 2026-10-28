@@ -7,7 +7,7 @@ reports/imputacao/wfo-lightgbm/report.html (variantes --results-dir caem em
 reports/imputacao/<slug>/report.html, ex.: wfo-lightgbm-2m).
 
 Usage:
-    python scripts/wfo_lightgbm_report.py [--open]
+    python scripts/experiments/wfo_lightgbm_report.py [--open]
 """
 
 import argparse
@@ -18,7 +18,7 @@ import sys
 import webbrowser
 from pathlib import Path
 
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
@@ -148,7 +148,7 @@ def load_inputs():
         key: entry for key, entry in data["wrappers"].items()
         if "metrics" in entry
     }
-    # baseline ARIMA (mesmo protocolo, scripts/wfo_arima_baseline.py)
+    # baseline ARIMA (mesmo protocolo, scripts/experiments/wfo_arima_baseline.py)
     arima_metrics = proto.RESULTS_DIR / "arima_baseline" / "metrics.json"
     if arima_metrics.is_file():
         with open(arima_metrics, encoding="utf-8") as handle:
@@ -163,7 +163,7 @@ def load_inputs():
             )
         if arima_entry.get("predictions") is not None:
             data["wrappers"]["arima"] = arima_entry
-    # baseline Random Forest (mesmo protocolo, scripts/wfo_rf_baseline.py)
+    # baseline Random Forest (mesmo protocolo, scripts/experiments/wfo_rf_baseline.py)
     rf_metrics = proto.RESULTS_DIR / "rf_baseline" / "metrics.json"
     if rf_metrics.is_file():
         with open(rf_metrics, encoding="utf-8") as handle:
@@ -206,7 +206,7 @@ def sec_intro(data):
         ("Baseline ARIMA", "ARIMA(p,d,q) escolhido por AIC por janela, retreinado "
                            "mensalmente, mesmas origens e censura dos modelos"
         if "arima" in data.get("wrappers", {}) else
-        "ARIMA (nao calculado ainda — scripts/wfo_arima_baseline.py)"),
+        "ARIMA (nao calculado ainda — scripts/experiments/wfo_arima_baseline.py)"),
         ("Ablação 2 meses", "variação com janela de treino de 2 meses civis "
                             "(lstm_bi, tcn_bi, ARIMA) em "
                             "<code>reports/imputacao/wfo-lightgbm-2m/"
@@ -221,7 +221,7 @@ def sec_dados(data):
     meta = data.get("meta", {})
     if not meta:
         return section("2. Dados e imputacao", "<p>series_meta.json ausente — rode "
-                       "scripts/wfo_lightgbm_prepare.py.</p>", "dados")
+                       "scripts/experiments/wfo_lightgbm_prepare.py.</p>", "dados")
     series = pd.read_csv(proto.SERIES_CSV, index_col="timestamp", parse_dates=True)
     flags = pd.read_csv(proto.FLAGS_CSV, index_col="timestamp", parse_dates=True).astype(bool)
     row_flag = flags.any(axis=1)
@@ -474,7 +474,7 @@ def sec_walkforward(data):
     if not wrappers:
         return section("4. Walk-forward validation",
                        "<p>Nenhum modelo com metrics.json em "
-                       "data/results/wfo_lightgbm/. Rode scripts/wfo_lightgbm_run.py "
+                       "data/results/wfo_lightgbm/. Rode scripts/experiments/wfo_lightgbm_run.py "
                        "(local) ou colete os kernels do Kaggle.</p>", "wfo")
 
     # Frames "deploy observado": so alvos observados; origens puladas quando o

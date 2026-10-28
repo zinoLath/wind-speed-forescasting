@@ -46,7 +46,7 @@ vs 2,78 do resto. Desligável com `--no-variance-guard`.
 
 ## Persistência de per_horizon
 
-- `tests/relatorio_resultados.py` agora grava `per_horizon`/`per_horizon_den`
+- `reports/src/relatorio_resultados.py` agora grava `per_horizon`/`per_horizon_den`
   (records) em cada modelo do `evaluation.json` — rodadas novas já nascem
   completas.
 - Rodadas antigas sem `per_horizon`: o script **recomputa dos pesos**
@@ -59,5 +59,5 @@ vs 2,78 do resto. Desligável com `--no-variance-guard`.
 
 - `scripts/sbsr_tables.py`; `reports/src/latexfmt.py`;
   `data/results/baselines/arima_rf/metrics.json`;
-  `tests/relatorio_resultados.py` (persistência per_horizon);
+  `reports/src/relatorio_resultados.py` (persistência per_horizon);
   `articles/sbr/LaTeX_Template_SBSR_Portugues/04_Resultados.tex` (convenção).

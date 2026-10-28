@@ -3,20 +3,20 @@
 Ciclo (reusa a infra da rodada Optuna: dataset + kernels GPU + snapshot):
 
     # 1. Empacota codigo + serie imputada + best_trial.json dos wrappers
-    python scripts/wfo_lightgbm_kaggle.py package
+    python scripts/experiments/wfo_lightgbm_kaggle.py package
 
     # 2. Cria/versiona o Dataset no Kaggle com o pacote
-    python scripts/wfo_lightgbm_kaggle.py dataset
+    python scripts/experiments/wfo_lightgbm_kaggle.py dataset
 
     # 3. Empurra 1 kernel GPU por wrapper (snapshot do resultado a cada 10 min)
-    python scripts/wfo_lightgbm_kaggle.py push            # tcn tcn_bi
-    python scripts/wfo_lightgbm_kaggle.py push --wrappers tcn
+    python scripts/experiments/wfo_lightgbm_kaggle.py push            # tcn tcn_bi
+    python scripts/experiments/wfo_lightgbm_kaggle.py push --wrappers tcn
 
     # 4. Acompanha (progresso local + status dos kernels)
-    python scripts/wfo_lightgbm_kaggle.py status
+    python scripts/experiments/wfo_lightgbm_kaggle.py status
 
     # 5. Traz o resultado, mescla em data/results/wfo_lightgbm e agrega
-    python scripts/wfo_lightgbm_kaggle.py collect
+    python scripts/experiments/wfo_lightgbm_kaggle.py collect
 
 `all` encadeia 1-3. O kernel gerado NUNCA deve ser editado a mao: regenere.
 """
@@ -31,7 +31,7 @@ import time
 import zipfile
 from pathlib import Path
 
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
@@ -47,7 +47,7 @@ DATASET_SLUG = "wind-speed-wfo-lightgbm"
 KERNEL_SLUG_PREFIX = "walk-forward-lightgbm"
 SNAPSHOT_SECS = 600
 
-KERNEL_TEMPLATE = '''"""Kernel gerado por scripts/wfo_lightgbm_kaggle.py — NAO editar a mao."""
+KERNEL_TEMPLATE = '''"""Kernel gerado por scripts/experiments/wfo_lightgbm_kaggle.py — NAO editar a mao."""
 import os
 import shutil
 import subprocess
@@ -136,7 +136,7 @@ def _snapshot_loop():
 
 threading.Thread(target=_snapshot_loop, daemon=True).start()
 
-command = f"python scripts/wfo_lightgbm_run.py --wrappers {{WRAPPER}}"
+command = f"python scripts/experiments/wfo_lightgbm_run.py --wrappers {{WRAPPER}}"
 print("$", command, flush=True)
 try:
     code = subprocess.call(command, shell=True)
@@ -163,7 +163,7 @@ sys.exit(code)
 '''
 
 
-# --- CLI Kaggle (bearer token) — mesmo padrao de scripts/colab_round2.py -----
+# --- CLI Kaggle (bearer token) — mesmo padrao de scripts/dist/colab_round2.py -----
 
 def _kaggle_env():
     env = dict(os.environ)
@@ -226,7 +226,7 @@ def cmd_package(args):
     wrappers = args.wrappers or list(proto.KAGGLE_WRAPPERS)
     for required in (proto.SERIES_CSV, proto.FLAGS_CSV, proto.META_JSON):
         if not required.is_file():
-            raise SystemExit(f"{required} ausente — rode scripts/wfo_lightgbm_prepare.py")
+            raise SystemExit(f"{required} ausente — rode scripts/experiments/wfo_lightgbm_prepare.py")
 
     stamp = time.strftime("%Y%m%d")
     DIST.mkdir(parents=True, exist_ok=True)
@@ -350,11 +350,11 @@ def cmd_push(args):
         if result.returncode != 0:
             if _quota_hint(result):
                 print(f"SEM COTA GPU no Kaggle para {wrapper_key}: rode localmente com")
-                print(f"  python scripts/wfo_lightgbm_run.py --wrappers {wrapper_key}")
+                print(f"  python scripts/experiments/wfo_lightgbm_run.py --wrappers {wrapper_key}")
                 notify(
                     "WFO Kaggle cota",
                     f"🚫 Sem cota GPU no Kaggle para {wrapper_key} — rode localmente: "
-                    f"python scripts/wfo_lightgbm_run.py --wrappers {wrapper_key}",
+                    f"python scripts/experiments/wfo_lightgbm_run.py --wrappers {wrapper_key}",
                     priority="high", tags="no_entry_sign",
                 )
             print((result.stderr or result.stdout or "")[:800])
@@ -362,7 +362,7 @@ def cmd_push(args):
         pushed.append(slug)
         print(f"  {user}/{slug} enviado.")
     if not args.dry_run and pushed:
-        print("\nAcompanhe com: python scripts/wfo_lightgbm_kaggle.py status")
+        print("\nAcompanhe com: python scripts/experiments/wfo_lightgbm_kaggle.py status")
 
 
 def cmd_status(args):
@@ -412,7 +412,7 @@ def cmd_collect(args):
         with zipfile.ZipFile(zips[-1]) as z:
             z.extractall(PROJECT_ROOT)
         proto.finalize_wrapper(wrapper_key)
-    print("\nDepois do collect completo: python scripts/wfo_lightgbm_report.py")
+    print("\nDepois do collect completo: python scripts/experiments/wfo_lightgbm_report.py")
 
 
 def cmd_all(args):

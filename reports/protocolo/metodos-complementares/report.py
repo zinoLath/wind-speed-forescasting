@@ -1,7 +1,7 @@
 """Relatório de protocolo — análises metodológicas complementares (SBSR).
 
 Consolida as análises pós-modelo geradas por
-``tests/metodos_complementares.py`` (Diebold–Mariano com HAC+HLN e IC por
+``studies/metodos_complementares.py`` (Diebold–Mariano com HAC+HLN e IC por
 bootstrap estacionário, skill vs. persistência, estratos por
 regime/intensidade, métricas de cauda, custo computacional, KS/ECDF,
 métricas de fase, A/B de loss e diagnóstico de resíduos com Page–Hinkley),
@@ -100,7 +100,7 @@ def build(ctx):  # noqa: ARG001 (contrato do builder)
         return C.page_header(
             "Análises metodológicas complementares",
             "Rodada ainda não executada.") + C.note(
-            "Execute <code>tests/metodos_complementares.py</code> (ou use o "
+            "Execute <code>studies/metodos_complementares.py</code> (ou use o "
             "botão <strong>Regenerar</strong> com o servidor ativo) para "
             "gerar <code>metodos.json</code>.")
 
@@ -145,7 +145,7 @@ def build(ctx):  # noqa: ARG001 (contrato do builder)
         "origens</strong> — as origens dos baselines têm drift de "
         "microssegundos e não casam com a grade do dataset. A correção "
         "(<code>origin.dt.round(\"min\")</code>) está aplicada aqui e "
-        "falta aplicar em <code>tests/relatorio_resultados.py</code>.</p>"
+        "falta aplicar em <code>reports/src/relatorio_resultados.py</code>.</p>"
         "</div>",
         sub="Números desta página vêm de metodos.json; cada seção traz o "
             "conceito, como ler o gráfico e as fontes (DOIs verificados "
@@ -416,7 +416,7 @@ REPORT = {
                    "regime/intensidade, caudas, custo, KS/ECDF, fase, A/B "
                    "de loss e resíduos — DL e baselines na mesma grade de "
                    "origens.",
-    "regenerate": [".venv/bin/python", "tests/metodos_complementares.py",
+    "regenerate": [".venv/bin/python", "studies/metodos_complementares.py",
                    "--models-dir", "pipeline/tmp/trained_8020",
                    "--loss-ab-dir", "pipeline/tmp/trained_8020_mseloss",
                    "--out-dir", "data/results/metodos_complementares"],

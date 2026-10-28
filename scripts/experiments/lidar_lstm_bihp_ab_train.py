@@ -14,10 +14,10 @@ Saídas:
     data/results/lstm_bihp_ab_8020/summary.json
 
 Análise (sem GPU, DM pareado + figuras):
-    python tests/lstm_bihp_ab_8020.py
+    python studies/lstm_bihp_ab_8020.py
 
     source scripts/tf_gpu_env.sh
-    python scripts/lidar_lstm_bihp_ab_train.py
+    python scripts/experiments/lidar_lstm_bihp_ab_train.py
 """
 
 import argparse
@@ -28,7 +28,7 @@ from pathlib import Path
 
 import pandas as pd
 
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
@@ -193,7 +193,7 @@ def main():
     common.write_json(RESULTS_DIR / "summary.json", summary)
     print(f"\nModelos: {OUTPUT_DIR}")
     print(f"Resumo: {RESULTS_DIR / 'summary.json'}")
-    print("Analise: python tests/lstm_bihp_ab_8020.py")
+    print("Analise: python studies/lstm_bihp_ab_8020.py")
 
 
 if __name__ == "__main__":

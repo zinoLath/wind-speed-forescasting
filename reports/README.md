@@ -40,10 +40,10 @@ Todo inserível (figura/tabela) tem botão **LaTeX** com:
 Com o servidor ativo, cada página tem:
 
 - **↻ Regenerar** — roda o comando `regenerate` do relatório (ex.:
-  `tests/relatorio_resultados.py` para reavaliar os modelos e refazer as
+  `reports/src/relatorio_resultados.py` para reavaliar os modelos e refazer as
   figuras) e reconstrói o site;
 - **▶ Regenerar com retreino** — roda o `retrain` em background (ex.:
-  `scripts/lidar_7525_train.py --train-ratio 0.80`), com log em
+  `scripts/experiments/lidar_7525_train.py --train-ratio 0.80`), com log em
   `retrain.log`; ao terminar, a página recarrega com os números novos
   (para os relatórios LiDAR, o retreino dispara a regeneração do
   relatório de resultados; atenção: sobrescreve os modelos canônicos —

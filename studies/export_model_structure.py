@@ -6,7 +6,7 @@ arquitetura definitiva: formas, nomes de camada, ativações e tag de
 treinabilidade.
 
 Executar a partir da raiz do projeto:
-    python tests/export_model_structure.py
+    python studies/export_model_structure.py
 """
 
 import sys

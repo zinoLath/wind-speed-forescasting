@@ -84,7 +84,7 @@ ablações h3cis/h3cisvdisp (adicionadas como extras).
 **Decisão do autor (22/10)**: descartar as primeiras 72 origens do
 teste (entrada cruzava treino) para TODOS os métodos — evita
 argumentação de vazamento. Implementado como `--trim-boundary-origins
-72` em `tests/relatorio_resultados.py` (corta dense, rolling e
+72` em `reports/src/relatorio_resultados.py` (corta dense, rolling e
 baselines; recalcula as métricas ARIMA/RF/persistência na grade
 cortada). Run oficial #5, relatório `reports/lidar/8020-sbsr`:
 
@@ -150,6 +150,115 @@ SOBRESCREVE `self.persistence_gate` com o kwarg default `False`
 do prepare()**, não como atributo prévio (o `gate_mode` pode ir após,
 prepare não o toca).
 
+## Potência vs empate real (23/10) — diagnóstico d de Cohen
+
+Com efeito padronizado por par (agregado h1–35, run #5): TCN-Bi×ARIMA
+**d=0,02** (precisaria de ~169 dias de teste p/ "detectar"); LSTM×ARIMA
+d=0,07 (~16 dias) — **empates reais, não falta de amostra**. Onde o
+efeito é grande, os testes acharam: TCN-Bi×TCN d=0,18 (CW p<0,0001),
+LSTM×LSTM-Bi d=0,35 (IC fechado h6–h24), TCN-Bi×Pers h24–35 d=0,20
+(IC fechado) — ou seja, **o aparato tem potência para efeitos ≥~0,2 e
+os encontrou**. Piso independente de amostra: diferenças entre wrappers
+< ±0,04 R² (ruído de seed) são indecidíveis a 1 seed. Correção de
+rota: DM/HLN TCN×ARIMA corretamente alinhado dá p=0,58 (não
+significativo) — o z≈−5 ingênuo era sem o HAC de 35 lags.
+
+## TCN h3 (14col) × 5 seeds (23/10) — o "0,514" era seed sortuda
+
+`trained_8020_sbsr_h3seeds` (script com `--extras none --heights 40 100
+140`, receita original da ablação de alturas): R² **0,417 ± 0,072**
+(0,339–0,480), rolling 0,300±0,071. Comparação multi-seed das receitas
+da TCN-uni: **h3 14col 0,417±0,072 ≈ 48col 0,400±0,031** (nenhuma
+diferença significativa) — e o **0,514 do h3 era seed 42 sortuda** (a
+seed 43 da ablação original já dava 0,441). A TCN-uni, em qualquer
+receita, tem centro ~0,40–0,42 com desvio 0,03–0,07; os 0,51–0,52
+históricos eram sorteios. Campo `feature_keep` do meta do h3seeds está
+rotulado errado (gravou meteo; modelo real tem 16 features de entrada =
+14 col + 2 canais de alvo). Script de seeds agora suporta
+`--extras {none,meteo,featurex}` + `--heights`.
+
+## O detalhe fino da wavelet NÃO é ruído (23/10) — revisão do "piso de ruído"
+
+Teste proposto pelo autor (validar H0 "o detalhe é imprevisível"):
+**REFUTADO.** O detalhe D1+D2 (20–40 min, 6,6% da variância) tem
+estrutura oscilatória: Ljung–Box rejeita ruído branco nos lags 6/12/36
+(p≈0,0000; lag 1 branco) e um **ridge com lags 1–6 prevê o detalhe com
+R²=0,455** (IC95% blocos diários [0,426; 0,482]; r=0,68). Implicações:
+(1) o denoise é escolha pragmática de regularização de treino (A/B a
+favor), NÃO porque o detalhe seja imprevisível; (2) o teto R² vs bruto
+sobe de 0,932 para ≈0,96 se o detalhe for explorado; (3) ~3% da
+variância total é sinal previsível descartado pelo VisuShrink —
+trabalho futuro natural: decoder multi-task (wavelet + detalhe) ou
+threshold menor; a TCN (dilatações 1–4 = 10–40 min) é a arquitetura
+natural para essa oscilação. Artefato: análise inline (sem script
+salvo ainda); números no finding. A narrativa "piso de ruído de 6,8%"
+NÃO deve ser citada como "irredutível" — é 6,8% dos quais ~45%
+previsíveis (irredutível real ≈ 3,6% da variância total).
+
+## Testes de hipótese na rodada 8020-sbsr (23/10)
+
+Bateria sobre perdas por origem (MSE médio nos 36 passos, 1.405 origens,
+7 modelos), DM com HLN+HAC lag 35, α=0.05. Artefato:
+`data/results/report_8020_sbsr/testes_hipotese.json`.
+
+- **DM pareado (21 pares): NENHUM rejeita H0** após Holm; o único p<0.05
+  bruto é LSTM-Bi vs LSTM (p=0.0138, LSTM melhor) — p_Holm=0.29.
+  TCN-Bi vs ARIMA p=0.994 — empate técnico do TCN-Bi com o ARIMA
+  (consistente com a narrativa do paper).
+- **Friedman (origens como blocos): REJEITA** (χ²=222.6, p=2.9e-45) —
+  "pelo menos um modelo difere"; ranks: TCN-Bi 3.44 < ARIMA 3.86 ≈ LSTM
+  3.89 < TCN 4.01 ≈ P 4.03 < RF 4.19 < LSTM-Bi 4.59.
+- **Wilcoxon pareado + Holm: 12/21 pares rejeitam** — separações claras:
+  TCN-Bi > LSTM-Bi/RF/P/TCN/LSTM (p<1e-4); LSTM-Bi < todos (p<1e-9);
+  LSTM > RF; ARIMA > RF. NS após Holm: TCN vs ARIMA/RF/LSTM/P,
+  ARIMA vs P, LSTM vs P, LSTM-Bi vs RF.
+- **DM por horizonte (23/10, cálculo do banco, 756 células = 21 pares ×
+  36 passos): só 12 rejeitam H0 (1,6%) — e TODAS são ARIMA > RF nos
+  passos 1–12**. Nenhum par entre redes, nem vs persistência, rejeita
+  com DM(HLN+HAC) a 5%. Potência, não ausência de diferença: ~11 dias
+  efetivos + HAC lag h−1. A evidência horizonte-wise do paper fica no
+  bootstrap em blocos (IC fecha em h24/h35 vs persistência) e o DM
+  serve como confirmação conservadora de empate de perdas médias.
+- Leitura: DM (conservador, HAC) não distingue perdas médias; Wilcoxon
+  capta diferenças distribucionais — usar os dois no paper (DM como
+  "sem diferença de perda média comprovada" + Wilcoxon/Holm para ordem).
+- **No report do hub**: `reports/lidar/8020-sbsr/report.py` ganhou a
+  seção "Testes de hipótese" (tabelas DM 21 pares, Friedman/ranks,
+  Wilcoxon+Holm e MCS multi-α, todas com popup LaTeX tab:dm_pares /
+  tab:friedman_ranks / tab:wilcoxon_pares / tab:mcs_multialpha), lida de
+  `testes_hipotese.json` + `mcs_multialpha.json` no source_dir.
+
+## MCS: sem valor de comentário no paper (decisão do autor, 23/10)
+
+
+MCS agregado = 7/7 e **MCS horizonte a horizonte (23/10,
+`report_8020_sbsr/mcs_horizon.json`, 1.000 boots/bloco 36) = 7/7 em
+todos os 35 horizontes** — nem a persistência sai em h35. Motivo:
+correção de comparação múltipla (estatística de máximo vs o melhor do
+conjunto) + ~11 dias efetivos ⇒ potência zero para excluir qualquer um.
+**Multi-α (23/10, `report_8020_sbsr/mcs_multialpha.json`, 2.000 boots):
+7/7 até α=0.01; só α=0.25 exclui LSTM-Bi (p=0.111)** — único p de
+exclusão não-censurado; TCN-Bi/TCN/LSTM/ARIMA/RF/P nunca entraram em
+rodada de eliminação.
+Decisão: **MCS fora do texto do artigo** (ou uma linha de honestidade);
+o suporte estatístico do paper passa por Clark & West aninhado (TCN-Bi >
+TCN, p<0,0001), heatmap de bootstrap em blocos (TCN-Bi/LSTM > Pers. com
+IC fechado em h24/h35) e Friedman global. Nota técnica: o IC par a par
+do heatmap fecha em h35 onde o MCS não exclui — MCS é mais conservador
+(máximo + correção múltipla) que o IC par a par.
+
+## Friedman global na rodada canônica (23/10) — marginal, não citar a 5%
+
+Reavaliado na run #5 (11 dias, MSE diário, 4 canônicas):
+**χ²=6,82, p=0,078 — NÃO significativo a 5%** (o χ²=11,4/p=0,0098
+citado antes vinha da run #1, rodada ponderada antiga). Ranks médios:
+TCN-Bi 2,0 < LSTM 2,09 < TCN 2,64 < LSTM-Bi 3,27. Suporte estatístico
+do paper fica reduzido a: **Clark & West aninhado** (p<0,0001) + **ICs
+par a par do bootstrap em blocos** (heatmap) — Friedman só como
+"marginal a 10%" ou fora do texto. Força a tese de que 11 dias de teste
+não sustentam claims de superioridade no agregado; a narrativa
+descritiva por horizonte + CW é o que resta.
+
 ## Clark & West nos pares aninhados (23/10/2026)
 
 CW MSPE-ajustado (`src/utils.py:clark_west`), agregado por origem,
@@ -212,6 +321,21 @@ Persistência no MCS agregado ≠ derrota: decompondo (persistência =
   `nascimentotransformer`).
   `nascimentotransformer`).
 - [ ] Alvo `ws100_wavelet` e 60 épocas fixas mantidos (protocolo).
+
+## Rodada de 10 seeds (1–10) no Kaggle (23/10, em andamento)
+
+`scripts/sbsr_seeds_kaggle.py` + `kaggle_seeds_dispatch.py`: 4 kernels
+(1 por wrapper), seeds **1–10** (convenção nova a pedido do autor),
+grade 80/20 com filtro de observadas. Kernels leves (lstm, tcn) rodando
+na conta joaohenriqueflauzino (~0,9h da cota); pesados (lstm_bi,
+tcn_bi) preparados em `dist/kaggle/kernel-sbsr10-*`, pendentes de
+envio (cota). Saída: `pipeline/tmp/sbsr10/gpu{0,1}/<wrapper>/` →
+`collect` consolida mean±std. Motivação: 5 seeds mostraram que
+TCN-uni honesta = 0,400±0,031 (48col) / 0,417±0,072 (h3) e que os
+0,51–0,52 históricos eram seeds sortudas; 10 seeds permitem Wilcoxon
+pareado (n=5 nunca alcança p<0,05 bilateral) e médias com IC útil.
+Nota: com seeds 1–10, lembrar que as seeds 42–51 dos estudos antigos
+são INDEPENDENTES desta rodada (não somar amostras).
 
 ## Fontes
 

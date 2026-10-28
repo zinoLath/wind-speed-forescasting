@@ -1,6 +1,6 @@
 # A/B: alvo cru (ws100) vs alvo suavizado (ws100_wavelet)
 
-Experimento: `python tests/ab_raw_vs_wavelet.py --epochs 15`
+Experimento: `python studies/ab_raw_vs_wavelet.py --epochs 15`
 
 Treina o mesmo wrapper (`lstm_bi`, hiperparâmetros padrão, seed 42) com dois
 alvos diferentes e compara as métricas **contra o ws100 cru** no split de

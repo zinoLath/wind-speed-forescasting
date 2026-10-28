@@ -29,7 +29,7 @@ windows fully contained in the training slice.
 Outputs (default ``data/results/baselines/arima_rf/``): metrics.json,
 per-horizon metrics CSV, long-format predictions CSV and comparison plots.
 
-Standalone script (no pytest): ``python tests/baseline_arima_rf.py``.
+Standalone script (no pytest): ``python studies/baseline_arima_rf.py``.
 """
 
 import argparse

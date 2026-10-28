@@ -8,7 +8,7 @@ meteorológicas (pressão, umidade, temperatura).
 Gera figuras e um relatório HTML em data/eda/.
 
 Executar a partir da raiz do projeto:
-    python tests/eda_lidar.py
+    python studies/eda_lidar.py
 
 Saída:
     data/eda/images/*.png
@@ -1307,7 +1307,7 @@ def build_html(report):
             "</header>\n<div class=\"container\">\n"
             f"<div class=\"cards\">{cards}</div>\n{''.join(parts)}\n"
             "</div>\n"
-            "<footer>Relatório gerado automaticamente por tests/eda_lidar.py</footer>\n"
+            "<footer>Relatório gerado automaticamente por studies/eda_lidar.py</footer>\n"
             "<script>\n"
             "function copiarLatex(btn){\n"
             "  var latex = btn.getAttribute(\"data-latex\");\n"

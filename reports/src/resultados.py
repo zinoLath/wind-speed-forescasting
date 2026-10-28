@@ -55,6 +55,9 @@ FIGURE_CAPTIONS = {
     "16_wavelet_vs_real": "Erro vs alvo wavelet vs erro ws100 bruto",
     "16c_significancia_dm_ab_loss": "DM das variantes de loss (A/B de função de perda)",
     "16d_mcs": "Model Confidence Set — p-valor de exclusão por modelo (agregado sobre os 36 horizontes)",
+    "fig_testes_hipotese": ("Testes de hipótese — rank médio de Friedman, ΔMSE médio por origem, "
+                            "estatística e p-valor do Diebold–Mariano (HLN+HAC), p-valor do Wilcoxon "
+                            "pareado+Holm e MCS multi-α. Borda verde = rejeita H₀ a 5%"),
     "16e_bootstrap_ci": ("ΔMSE (linha − coluna) com IC95% por bootstrap em blocos — "
                          "* = IC exclui zero; positivo = modelo da linha pior"),
 }
@@ -87,7 +90,8 @@ FIGURE_THEMES = [
      ("05_mae_por_horizonte_real", "05_mae_por_horizonte_wavelet",
       "06_heatmap_mse_horizonte", "06_heatmap_r2_horizonte",
       "16_significancia_dm", "16b_significancia_dm_pvalor",
-      "16c_significancia_dm_ab_loss", "16d_mcs", "16e_bootstrap_ci"),
+      "16c_significancia_dm_ab_loss", "16d_mcs", "16e_bootstrap_ci",
+      "fig_testes_hipotese"),
      "O erro cresce com o horizonte — o esperado —, mas o ponto crítico é "
      "<strong>onde cada modelo cruza a persistência</strong>: passos curtos "
      "(1–6) tendem a ficar aquém do ingênuo, e a vantagem aparece nos "
@@ -99,7 +103,13 @@ FIGURE_THEMES = [
      "escolha por custo de treino/inferência em vez de só por MSE. O "
      "heatmap de bootstrap em blocos reforça a leitura sem suposição "
      "paramétrica: célula com <strong>*</strong> tem IC95% do ΔMSE que "
-     "exclui zero (2.000 reamostragens em blocos de 36 origens)."),
+     "exclui zero (2.000 reamostragens em blocos de 36 origens). A "
+     "matriz-síntese fecha o painel com os três testes em uma figura: "
+     "Wilcoxon pareado + Holm (triângulo superior) separa distribuições, "
+     "Diebold–Mariano (inferior) testa a perda média esperada, e a "
+     "diagonal traz MSE e rank de Friedman (origens como blocos) — a "
+     "leitura típica é Wilcoxon separando o topo enquanto o DM mantém o "
+     "empate de perdas médias."),
     ("Trajetórias e previsões autônomas",
      ("07_fan_chart", "08_rolling_forecast_real",
       "08_rolling_forecast_wavelet", "10_piores_predicoes_lstm"),
@@ -379,7 +389,7 @@ def build_report(ctx, *, source_dir: str, title: str, subtitle: str = "",
                 f'(<code>data/predictions.db</code>) e <code>{C.esc(source_dir)}/'
                 f'evaluation.json</code> não encontrado. Use o botão '
                 f'<strong>Regenerar</strong> (servidor ativo) ou rode '
-                f'<code>tests/relatorio_resultados.py</code>.</p></section>')
+                f'<code>reports/src/relatorio_resultados.py</code>.</p></section>')
 
     # figuras: copia para a pasta do relatorio (artefatos locais da pagina)
     fig_prefix = "figures"
@@ -466,7 +476,8 @@ def build_report(ctx, *, source_dir: str, title: str, subtitle: str = "",
         "Métricas — todos os horizontes (1–36 passos, vs ws100 bruto)",
         C.table(["Modelo", "R²", "MSE", "RMSE", "MAE"], rows,
                 "Métricas de erro dos modelos seq2seq e dos baselines "
-                "estatísticos na mesma grade de origens.",
+                "estatísticos na mesma grade de origens (MSE, RMSE e MAE "
+                "em m/s).",
                 formats=FORMATS, label="tab:metricas_geral",
                 highlight_rows=highlight),
         sec_id="metricas"))

@@ -10,14 +10,14 @@ canonical, mas com a coluna extra ws100_wavelet (alvo pre-imputado). O runner
 pula o denoise quando a coluna ja existe (prepare_data).
 
 Usage:
-    python scripts/wfo_wavelet_first_prepare.py
+    python scripts/experiments/wfo_wavelet_first_prepare.py
 """
 
 import sys
 import time
 from pathlib import Path
 
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 

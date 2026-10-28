@@ -12,8 +12,8 @@ Braços (4 modelos):
 Além dos ``model.keras``/``model.json``, grava as predições long-format
 (denso e rolling) para a análise/report rodarem sem GPU:
 
-    python scripts/lidar_8020_lstm_lossab_train.py
-    python tests/lstm_lossab_8020.py \
+    python scripts/experiments/lidar_8020_lstm_lossab_train.py
+    python studies/lstm_lossab_8020.py \
         --models-dir pipeline/tmp/trained_8020_lstm_lossab \
         --out-dir data/results/lstm_lossab_8020
 """
@@ -27,8 +27,8 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
-for path in (PROJECT_ROOT, PROJECT_ROOT / "tests"):
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+for path in (PROJECT_ROOT,):
     if str(path) not in sys.path:
         sys.path.insert(0, str(path))
 
@@ -194,7 +194,7 @@ def main():
 
     common.write_json(OUTPUT_DIR / "summary.json", summary)
     print(f"\nModelos: {OUTPUT_DIR}")
-    print("Analise: python tests/lstm_lossab_8020.py --models-dir "
+    print("Analise: python studies/lstm_lossab_8020.py --models-dir "
           "pipeline/tmp/trained_8020_lstm_lossab "
           "--out-dir data/results/lstm_lossab_8020")
 

@@ -5,11 +5,11 @@ Experimento complementar aos testes originais (75/20/5 com early stopping na
 validacao): treino com orcamento fixo de EPOCHS epocas, sem early stopping e
 sem restauracao de pesos; os 20% finais viram teste. Os modelos sao salvos no
 mesmo formato de pipeline/step_train.py (model.keras + model.json com os
-ratios no metadata) para que tests/relatorio_resultados.py os avalie e gere
+ratios no metadata) para que reports/src/relatorio_resultados.py os avalie e gere
 o relatorio:
 
-    python scripts/lidar_7525_train.py --train-ratio 0.80
-    python tests/relatorio_resultados.py \
+    python scripts/experiments/lidar_7525_train.py --train-ratio 0.80
+    python reports/src/relatorio_resultados.py \
         --models-dir pipeline/tmp/trained_8020 \
         --out-dir data/results/report_8020 --no-baselines
 """
@@ -19,7 +19,7 @@ import sys
 import time
 from pathlib import Path
 
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 

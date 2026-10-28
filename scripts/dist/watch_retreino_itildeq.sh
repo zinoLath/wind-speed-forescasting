@@ -31,7 +31,7 @@ deadline=$(( $(date +%s) + MAX_WAIT_H * 3600 ))
 while ! pgrep -f "$PATTERN" >/dev/null 2>&1; do
     [ "$(date +%s)" -ge "$deadline" ] && {
         log "timeout: treino não começou em ${MAX_WAIT_H}h — sessão encerrada sem calcular"
-        "$ROOT/.venv/bin/python" "$ROOT/scripts/wfo_notify.py" \
+        "$ROOT/.venv/bin/python" "$ROOT/scripts/experiments/wfo_notify.py" \
             --title "Wind: vigia itildeq" --tags sleeping_zzz --desktop \
             "vigia encerrado: retreino não começou em ${MAX_WAIT_H}h" >/dev/null 2>&1
         exit 0
@@ -47,7 +47,7 @@ log "treino terminou — calculando pontos da rodada"
 # ---- fase 3: calcular os pontos em um resultado novo ------------------
 OUT=$(bash -lc "
     source '$ROOT/.venv/bin/activate' && source '$ROOT/scripts/tf_gpu_env.sh' && cd '$ROOT' &&
-    python tests/relatorio_resultados.py \
+    python reports/src/relatorio_resultados.py \
         --models-dir pipeline/tmp/trained_8020_itildeq \
         --out-dir data/results/report_8020_itildeq &&
     python scripts/sbsr_tables.py --round-dir data/results/report_8020_itildeq \
@@ -68,7 +68,7 @@ else
     TAGS="warning"
 fi
 
-"$ROOT/.venv/bin/python" "$ROOT/scripts/wfo_notify.py" \
+"$ROOT/.venv/bin/python" "$ROOT/scripts/experiments/wfo_notify.py" \
     --title "Wind: retreino itildeq" --priority high --tags "$TAGS" --desktop \
     "$MSG" >/dev/null 2>&1
 exit "$RC"

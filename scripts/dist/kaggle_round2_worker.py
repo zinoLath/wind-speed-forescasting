@@ -11,10 +11,10 @@ O que este worker adiciona sobre um ``python pipeline/step_optuna.py`` seco:
   - trials orfaos (RUNNING de um processo morto) marcados FAIL no restart;
   - deteccao de crash-loop (5 quedas rapidas -> erro com log no output).
 
-Usado dentro do kernel gerado por scripts/colab_round2.py kaggle (via
-scripts/kaggle_runner.py push), com o repo ja extraido em /kaggle/working:
+Usado dentro do kernel gerado por scripts/dist/colab_round2.py kaggle (via
+scripts/dist/kaggle_runner.py push), com o repo ja extraido em /kaggle/working:
 
-    python scripts/kaggle_round2_worker.py --config <cfg> --wrappers tcn
+    python scripts/dist/kaggle_round2_worker.py --config <cfg> --wrappers tcn
 """
 
 import argparse
@@ -28,11 +28,11 @@ import threading
 import time
 from pathlib import Path
 
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from scripts.colab_round2 import WRAPPER_DIRS  # mapa estatico, sem TF
+from scripts.dist.colab_round2 import WRAPPER_DIRS  # mapa estatico, sem TF
 
 
 def meminfo_gb():

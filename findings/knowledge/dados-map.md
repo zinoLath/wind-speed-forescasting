@@ -37,7 +37,7 @@ Onde vivem entradas, saídas e artefatos — e o que é gitignored.
 - `data/predictions.db` — banco SQLite das runs de predição
   (`src/predictions_db.py`): runs por `report_id`, modelos, hp, features,
   stats por horizonte (0 = total) e predições linha a linha. Gravado por
-  `tests/relatorio_resultados.py`; CLI
+  `reports/src/relatorio_resultados.py`; CLI
   `python -m src.predictions_db list|show|homologar|prune`.
 - `data/results/lidar_<tag>_features/all.json` — avaliação inline do treino.
 - `data/results/metodos_complementares/` — ARIMA/RF + estatísticas DM/KSPA

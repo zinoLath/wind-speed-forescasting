@@ -130,7 +130,7 @@ def build(ctx):  # noqa: ARG001
         return C.page_header(
             "Optuna Round 4 — skill vs ARIMA",
             "Sem dados locais.") + C.note(
-            "Rode <code>scripts/colab_round2.py collect --kaggle</code> "
+            "Rode <code>scripts/dist/colab_round2.py collect --kaggle</code> "
             "para trazer os resultados dos kernels.")
 
     rows = best_table(data)
@@ -231,7 +231,7 @@ REPORT = {
         ("Split", "70/10/20 (teste intocado)"),
         ("Loss", "LSTM→ITILDE-Q · TCN→MSE"),
         ("Dilatações", "estáticas C′ + profundidade"),
-        ("Coleta", "scripts/colab_round2.py collect --kaggle --promote"),
+        ("Coleta", "scripts/dist/colab_round2.py collect --kaggle --promote"),
     ],
 }
 

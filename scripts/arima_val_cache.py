@@ -7,7 +7,7 @@ uma vez, com rigor anti-vazamento:
 
   - ordem do ARIMA escolhida por AIC **só no treino**;
   - fit no treino e `append(refit=False)` + `forecast(36)` por origem da
-    validação (mesma maquinaria de ``tests/baseline_arima_rf.py``);
+    validação (mesma maquinaria de ``studies/baseline_arima_rf.py``);
   - grade de origens idêntica à usada pela avaliação dos modelos
     (primeira origem = primeira linha da validação; o encoder consome o fim
     do treino);
@@ -36,9 +36,9 @@ from src import common
 
 
 def _load_baseline_module():
-    """Importa tests/baseline_arima_rf.py (reuso da maquinaria rolling)."""
+    """Importa studies/baseline_arima_rf.py (reuso da maquinaria rolling)."""
     spec = importlib.util.spec_from_file_location(
-        "baseline_arima_rf", PROJECT_ROOT / "tests" / "baseline_arima_rf.py")
+        "baseline_arima_rf", PROJECT_ROOT / "studies" / "baseline_arima_rf.py")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
@@ -71,7 +71,7 @@ def main():
     order, table = baseline.select_arima_order(train_target)
     print(f"ARIMA ordem escolhida (AIC no treino): {order}")
 
-    origins = np.arange(train_end, val_stop - args.output_steps + 1)
+    origins = np.arange(train_end, val_stop - args.output_steps)
     print(f"origens da validação: {len(origins)}")
     preds = baseline.run_arima(target, train_target, train_end, origins,
                                args.output_steps, order)

@@ -5,7 +5,7 @@ Os demais hiperparâmetros ficam fixos nos vencedores do round 3
 step_optuna: MSE por horizonte ponderado, média sobre blocos temporais de
 validação, decoder de inferência. Estudos por wrapper em sqlite (retomável).
 
-Uso: python tests/optuna_lr_only.py [--wrappers ...] [--n-trials 30]
+Uso: python studies/optuna_lr_only.py [--wrappers ...] [--n-trials 30]
 """
 import argparse
 import gc

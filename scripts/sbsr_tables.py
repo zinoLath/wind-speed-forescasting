@@ -66,7 +66,7 @@ def fmt_num(x, nd: int, comma: bool) -> str:
 
 
 def load_rr():
-    path = PROJECT_ROOT / "tests" / "relatorio_resultados.py"
+    path = PROJECT_ROOT / "reports" / "src" / "relatorio_resultados.py"
     spec = importlib.util.spec_from_file_location("relatorio_resultados", path)
     mod = importlib.util.module_from_spec(spec)
     sys.modules["relatorio_resultados"] = mod
@@ -228,7 +228,7 @@ def build_tables(args) -> str:
 def trimmed_baseline_metrics(base: dict | None, n: int) -> dict:
     """Baselines recomputados na grade sem as primeiras *n* origens.
 
-    Espelha o corte de ``tests/relatorio_resultados.py``: descarta as
+    Espelha o corte de ``reports/src/relatorio_resultados.py``: descarta as
     primeiras *n* origens do ``predictions_long.csv`` (janela de entrada
     cruza a fronteira treino/teste) e recalcula as métricas para todos os
     métodos ficarem na mesma grade.
@@ -287,7 +287,7 @@ def main() -> None:
     ap.add_argument("--trim-boundary-origins", type=int, default=0,
                     help="descarta as primeiras N origens do teste e "
                          "recomputa os baselines na grade cortada "
-                         "(espelha tests/relatorio_resultados.py)")
+                         "(espelha reports/src/relatorio_resultados.py)")
     ap.add_argument("--placement", default="h")
     ap.add_argument("--label-all", default=DEFAULTS["all"]["label"])
     ap.add_argument("--caption-all", default=DEFAULTS["all"]["caption"])

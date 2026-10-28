@@ -8,11 +8,11 @@ disputam escrita e tudo resume de onde parou.
 
 Subcomandos (``all`` encadeia os primeiros):
 
-    python scripts/colab_round2.py plan --colab-gpus 2
-    python scripts/colab_round2.py package
-    python scripts/colab_round2.py notebooks
-    python scripts/colab_round2.py local [--start]
-    python scripts/colab_round2.py collect --drive-dir <mirror> [--promote]
+    python scripts/dist/colab_round2.py plan --colab-gpus 2
+    python scripts/dist/colab_round2.py package
+    python scripts/dist/colab_round2.py notebooks
+    python scripts/dist/colab_round2.py local [--start]
+    python scripts/dist/colab_round2.py collect --drive-dir <mirror> [--promote]
 
 Fluxo Colab (uma vez): ``package`` -> subir o zip para a pasta
 ``MyDrive/wind-speed-colab/round2/package/`` no drive.google.com -> abrir cada
@@ -37,7 +37,7 @@ import zipfile
 from datetime import datetime, timezone
 from pathlib import Path
 
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
@@ -190,14 +190,14 @@ def cmd_plan(args):
         else:
             entry["slug"] = f"optuna-{cfg['study_name']}-{worker['worker']}"
             entry["command"] = (
-                f"python scripts/kaggle_round2_worker.py --config {cfg['config']} "
+                f"python scripts/dist/kaggle_round2_worker.py --config {cfg['config']} "
                 f"--wrappers " + " ".join(worker["wrappers"])
             )
         workers.append(entry)
 
     local_command = (
         f"LOG=pipeline/tmp/colab_round2/logs/local-watchdog.log "
-        f"bash scripts/optuna_watchdog.sh {cfg['config']} " + " ".join(local_wrappers)
+        f"bash scripts/dist/optuna_watchdog.sh {cfg['config']} " + " ".join(local_wrappers)
         if local_wrappers else ""
     )
     if args.max_ram_gb and local_wrappers:
@@ -292,7 +292,7 @@ local. Cada trial é gravado no sqlite (estudo `{study}`), então desconexões d
 Colab **não perdem progresso**.
 
 ## Setup (uma vez)
-1. No computador local: `python scripts/colab_round2.py package` e faça upload
+1. No computador local: `python scripts/dist/colab_round2.py package` e faça upload
    do `dist/colab_round2_package_*.zip` para a pasta
    `MyDrive/{drive_root}/package/` no drive.google.com.
 2. **Runtime → Change runtime type → GPU** (sugestão: {gpu_hint}).
@@ -304,12 +304,12 @@ Colab **não perdem progresso**.
 ## Depois de uma desconexão
 Rode tudo de novo — o progresso volta do Drive e o estudo continua.
 
-O monitor local (`python scripts/colab_monitor.py --watch`) acompanha este
+O monitor local (`python scripts/dist/colab_monitor.py --watch`) acompanha este
 worker pelo heartbeat `heartbeats/{worker}.json`. Mantenha esta aba aberta.
 """
 
 CODE_PARAMS = """\
-# Parametros deste worker (gerado por scripts/colab_round2.py notebooks)
+# Parametros deste worker (gerado por scripts/dist/colab_round2.py notebooks)
 import json as _json
 
 WORKER = _json.loads(\"\"\"
@@ -346,7 +346,7 @@ PKG_DIR.mkdir(parents=True, exist_ok=True)
 zips = sorted(PKG_DIR.glob("colab_round2_package_*.zip"), key=lambda p: p.stat().st_mtime)
 assert zips, (
     f"Nenhum colab_round2_package_*.zip em {PKG_DIR}.\\n"
-    "Rode 'python scripts/colab_round2.py package' localmente e suba o zip para la."
+    "Rode 'python scripts/dist/colab_round2.py package' localmente e suba o zip para la."
 )
 pkg = zips[-1]
 print("pacote:", pkg.name)
@@ -753,7 +753,7 @@ def _load_plan(path=None):
     if not plan_path.is_file():
         raise SystemExit(
             f"Plano {plan_path} nao existe. Rode primeiro: "
-            "python scripts/colab_round2.py plan --colab-gpus N"
+            "python scripts/dist/colab_round2.py plan --colab-gpus N"
         )
     with open(plan_path, encoding="utf-8") as handle:
         return json.load(handle)
@@ -767,7 +767,7 @@ def cmd_local(args):
         return None
     log_path = PROJECT_ROOT / local["log"]
     log_path.parent.mkdir(parents=True, exist_ok=True)
-    cmd = ["bash", "scripts/optuna_watchdog.sh", plan["config"], *local["wrappers"]]
+    cmd = ["bash", "scripts/dist/optuna_watchdog.sh", plan["config"], *local["wrappers"]]
     env = dict(os.environ)
     env["LOG"] = str(log_path)
     if args.max_ram_gb:
@@ -776,7 +776,7 @@ def cmd_local(args):
     if not args.start:
         prefix = "MAX_USED_GB={} ".format(args.max_ram_gb) if args.max_ram_gb else ""
         print("Comando para os wrappers leves na GPU local (RAM auto-calibrada):\n")
-        print("  {}LOG={} bash scripts/optuna_watchdog.sh {} {}".format(
+        print("  {}LOG={} bash scripts/dist/optuna_watchdog.sh {} {}".format(
             prefix, log_path, plan["config"], " ".join(local["wrappers"])))
         return cmd
 
@@ -784,7 +784,7 @@ def cmd_local(args):
     proc = subprocess.Popen(cmd, stdout=out, stderr=subprocess.STDOUT, env=env,
                             cwd=PROJECT_ROOT, start_new_session=True)
     print(f"watchdog local iniciado (pid {proc.pid}); log: {log_path}")
-    print("Acompanhe com: python scripts/colab_monitor.py --watch")
+    print("Acompanhe com: python scripts/dist/colab_monitor.py --watch")
     return proc
 
 
@@ -886,7 +886,7 @@ def cmd_kaggle(args):
             print("[aviso] dataset ainda processando apos ~10 min; empurrando "
                   "kernels assim mesmo (risco de anexarem a versao antiga)")
 
-    from scripts.kaggle_runner import KERNEL_TEMPLATE
+    from scripts.dist.kaggle_runner import KERNEL_TEMPLATE
 
     for worker in workers:
         script = KERNEL_TEMPLATE.format(
@@ -924,8 +924,8 @@ def cmd_kaggle(args):
         _kaggle_run("kernels", "push", "-p", str(kernel_dir))
         print(f"kernel {user}/{worker['slug']} enviado ({', '.join(worker['wrappers'])})")
     if not args.dry_run:
-        print("Acompanhe com: python scripts/colab_monitor.py --watch 60")
-        print("Output (ao terminar): python scripts/colab_round2.py collect --kaggle")
+        print("Acompanhe com: python scripts/dist/colab_monitor.py --watch 60")
+        print("Output (ao terminar): python scripts/dist/colab_round2.py collect --kaggle")
 
 
 def cmd_collect(args):
@@ -1051,14 +1051,14 @@ def cmd_all(args):
     kaggle_workers = [w for w in plan["workers"] if w.get("backend") == "kaggle"]
     if plan.get("local"):
         print("\nWrappers leves locais — inicie com:")
-        print("  python scripts/colab_round2.py local --start")
+        print("  python scripts/dist/colab_round2.py local --start")
     if kaggle_workers:
         print("\nWorkers Kaggle — empurre os kernels com:")
-        print("  python scripts/colab_round2.py kaggle        (ou --dry-run p/ inspecionar)")
+        print("  python scripts/dist/colab_round2.py kaggle        (ou --dry-run p/ inspecionar)")
     print("\nProximos passos manuais:")
     print(f"  1. Suba dist/colab_round2_package_*.zip para MyDrive/{plan['drive_root']}/package/")
     print("  2. Abra cada notebook em notebooks/colab_round2/ no Colab com Runtime GPU")
-    print("  3. Monitore tudo com: python scripts/colab_monitor.py --watch 60")
+    print("  3. Monitore tudo com: python scripts/dist/colab_monitor.py --watch 60")
 
 
 def main():

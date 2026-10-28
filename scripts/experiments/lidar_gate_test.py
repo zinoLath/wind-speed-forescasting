@@ -4,7 +4,7 @@ Nao sobrescreve relatorios nem os modelos canonicos:
 - modelo -> pipeline/tmp/trained_8020_gate/tcn_bi
 - metricas -> data/results/gate_test_8020/summary.json
 
-    python scripts/lidar_gate_test.py
+    python scripts/experiments/lidar_gate_test.py
 """
 
 import argparse
@@ -13,7 +13,7 @@ import sys
 import time
 from pathlib import Path
 
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 

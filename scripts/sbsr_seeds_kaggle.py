@@ -37,11 +37,12 @@ KERNELS = {
     "sbsr10-lstm-bi": ("lstm_bi", False),  # pesado
     "sbsr10-tcn-bi": ("tcn_bi", False),    # pesado
 }
-PACKAGE_EXTRA_GLOBS = ("pipeline/tmp/trained_8020_itildeq/*/model.json",)
+PACKAGE_EXTRA_GLOBS = ("pipeline/tmp/trained_8020_itildeq/*/model.json",
+                       "pipeline/configs/*.json")
 
 
 def _cli():
-    from scripts.colab_round2 import _kaggle_run, _kaggle_user
+    from scripts.dist.colab_round2 import _kaggle_run, _kaggle_user
     return _kaggle_run, _kaggle_user
 
 
@@ -54,7 +55,7 @@ def cmd_package():
     stamp = time.strftime("%Y%m%d_%H%M")
     out = DIST / f"colab_round2_package_{stamp}.zip"
     out.parent.mkdir(parents=True, exist_ok=True)
-    patterns = ["src", "scripts", "tests"]
+    patterns = ["src", "scripts", "tests", "studies", "reports/src"]
     with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as zf:
         for pattern in patterns:
             for path in (PROJECT_ROOT / pattern).rglob("*"):
@@ -97,7 +98,7 @@ def _dataset(zip_path, dry=False):
 
 def _push_kernels(full_id, dry=False, only=()):
     _run, user = _cli()
-    from scripts.kaggle_runner import KERNEL_TEMPLATE
+    from scripts.dist.kaggle_runner import KERNEL_TEMPLATE
     seeds = f"1-{max(SEEDS)}"
     for slug, (wrappers, _light) in KERNELS.items():
         if only and slug not in only:

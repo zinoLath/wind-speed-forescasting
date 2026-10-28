@@ -4,9 +4,9 @@ Consolida, numa tabela so, o progresso de cada estudo (sqlite direto, sem
 optuna) e a saude de cada worker (heartbeats que os notebooks gravam no
 Drive + log do watchdog local). Ideal para deixar rodando com --watch.
 
-    python scripts/colab_monitor.py                 # um snapshot
-    python scripts/colab_monitor.py --watch 60      # loop
-    python scripts/colab_monitor.py --json          # saida maquina (skill)
+    python scripts/dist/colab_monitor.py                 # um snapshot
+    python scripts/dist/colab_monitor.py --watch 60      # loop
+    python scripts/dist/colab_monitor.py --json          # saida maquina (skill)
 
 Espelho do Drive: --drive-dir <pasta local com o conteudo de
 MyDrive/wind-speed-colab/round2> (cliente desktop do Drive, rclone ou
@@ -29,7 +29,7 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
@@ -49,7 +49,7 @@ def load_plan(path):
     if not plan_path.is_file():
         raise SystemExit(
             f"Plano {plan_path} nao existe; rode "
-            "'python scripts/colab_round2.py plan --colab-gpus N' primeiro."
+            "'python scripts/dist/colab_round2.py plan --colab-gpus N' primeiro."
         )
     with open(plan_path, encoding="utf-8") as handle:
         return json.load(handle)
@@ -181,7 +181,7 @@ def kaggle_kernel_status(worker, stale_min):
     if not shutil.which("kaggle"):
         return {"status": "UNKNOWN", "detail": "CLI kaggle ausente"}
     try:
-        from scripts.colab_round2 import _kaggle_env, _kaggle_user
+        from scripts.dist.colab_round2 import _kaggle_env, _kaggle_user
     except ImportError:
         return {"status": "UNKNOWN", "detail": "colab_round2 indisponivel"}
     slug = worker.get("slug")
@@ -228,7 +228,7 @@ def collect_status(args):
     for wrapper in local.get("wrappers", []):
         owners.setdefault(wrapper, "local")
 
-    from scripts.colab_round2 import WRAPPER_DIRS  # mapa estatico, sem TF
+    from scripts.dist.colab_round2 import WRAPPER_DIRS  # mapa estatico, sem TF
 
     rows = []
     for wrapper, worker_name in owners.items():
@@ -338,12 +338,12 @@ def print_report(report):
             print(f"  ! {err}")
     if report["all_done"]:
         print("\nTodos os estudos alcancaram o orcamento. Rode o collect:")
-        print("  python scripts/colab_round2.py collect --drive-dir <mirror> --kaggle --promote")
+        print("  python scripts/dist/colab_round2.py collect --drive-dir <mirror> --kaggle --promote")
     elif not report["ok"]:
         print(f"\nATENCAO: problemas em {', '.join(report['problems'])}")
     if any(r["status"].startswith("complete") for r in report["rows"]):
         print("\nKernel Kaggle COMPLETE: traga o progresso com "
-              "'python scripts/colab_round2.py collect --kaggle'.")
+              "'python scripts/dist/colab_round2.py collect --kaggle'.")
 
 
 def main():

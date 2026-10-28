@@ -324,13 +324,13 @@ class Handler(SimpleHTTPRequestHandler):
         return self._json({"error": "endpoint desconhecido"}, 404)
 
 
-def serve(port: int = 8765) -> int:
+def serve(port: int = 8765, host: str = "127.0.0.1") -> int:
     if not (SITE_DIR / "index.html").is_file():
         print("site inexistente — construindo...")
         builder.build_site()
     signal.signal(signal.SIGTERM, lambda *a: sys.exit(0))
-    server = ThreadingHTTPServer(("127.0.0.1", port), Handler)
-    print(f"hub: http://127.0.0.1:{port}/  (Ctrl-C para sair)")
+    server = ThreadingHTTPServer((host, port), Handler)
+    print(f"hub: http://{host}:{port}/  (Ctrl-C para sair)")
     try:
         server.serve_forever()
     except KeyboardInterrupt:
@@ -342,6 +342,9 @@ def serve(port: int = 8765) -> int:
 
 if __name__ == "__main__":
     port = 8765
+    host = "127.0.0.1"
     if "--port" in sys.argv:
         port = int(sys.argv[sys.argv.index("--port") + 1])
-    sys.exit(serve(port))
+    if "--host" in sys.argv:
+        host = sys.argv[sys.argv.index("--host") + 1]
+    sys.exit(serve(port, host))

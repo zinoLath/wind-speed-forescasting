@@ -24,7 +24,7 @@ REPORT, build = report_module(
              "normalização das features — mede o quanto o escalonamento "
              "contribui.",
     badges=("75/20/5", "ablação", "sem normalização"),
-    regenerate=[".venv/bin/python", "tests/relatorio_resultados.py",
+    regenerate=[".venv/bin/python", "reports/src/relatorio_resultados.py",
                 "--models-dir", "pipeline/tmp/trained_compare_nonorm",
                 "--out-dir", "data/results/report_nonorm",
                 "--no-baselines"],

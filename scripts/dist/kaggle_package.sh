@@ -7,11 +7,11 @@
 # notebooks/kaggle_optuna_nogate.ipynb dentro de /kaggle/working.
 #
 # Usage:
-#   bash scripts/kaggle_package.sh
+#   bash scripts/dist/kaggle_package.sh
 
 set -eu
 
-PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$PROJECT_ROOT"
 
 STAMP="$(date '+%Y%m%d')"

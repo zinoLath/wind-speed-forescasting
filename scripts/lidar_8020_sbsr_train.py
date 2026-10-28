@@ -11,7 +11,7 @@ Decisão do autor (22/10/2026, finding `rodada-final-sbsr`):
   seed 42, 60 épocas, split 80/20 sem validação, alvo ``ws100_wavelet``.
 
     python scripts/lidar_8020_sbsr_train.py
-    python tests/relatorio_resultados.py \
+    python reports/src/relatorio_resultados.py \
         --models-dir pipeline/tmp/trained_8020_sbsr \
         --out-dir data/results/report_8020_sbsr
 """
@@ -49,8 +49,8 @@ FEATURE_SET_LABEL = {
 
 
 def canonical_meta(wrapper_key):
-    path = CANON_DIR / wrapper_key / "model.json"
-    return json.load(open(path, encoding="utf-8"))
+    # snapshot versionado (pipeline/configs/) com fallback ao artefato treinado
+    return common.canonical_round_meta(wrapper_key)
 
 
 def main():
@@ -171,7 +171,7 @@ def main():
               f"R2={metrics['r2']:.4f}")
 
     print(f"\nModelos: {output_dir}")
-    print(f"Relatorio: python tests/relatorio_resultados.py --models-dir "
+    print(f"Relatorio: python reports/src/relatorio_resultados.py --models-dir "
           f"{output_dir.relative_to(common.resolve('.'))} --out-dir "
           "data/results/report_8020_sbsr")
 

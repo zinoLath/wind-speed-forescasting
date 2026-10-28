@@ -40,16 +40,16 @@ python scripts/train_dashboard.py --run tcn     # fixa um run por substring
 python scripts/train_dashboard.py --once        # snapshot estático
 
 # A/B: alvo cru (ws100) vs wavelet-denoised
-python tests/ab_raw_vs_wavelet.py --epochs 15
+python studies/ab_raw_vs_wavelet.py --epochs 15
 
 # Benchmark de orçamento fixo dos wrappers
-python tests/benchmark_transformer.py --wrapper lstm_bi --epochs 40
+python studies/benchmark_transformer.py --wrapper lstm_bi --epochs 40
 
 # Driver Optuna legado (referência; pipeline/step_optuna.py é o primário)
-python tests/optuna_all_hyperparameters.py --n-trials 100 --epochs 60
+python studies/optuna_all_hyperparameters.py --n-trials 100 --epochs 60
 
 # Imputer de colunas focais tunado por Optuna
-python tests/compare_rf_lgbm_impute_detailed.py --optuna
+python studies/compare_rf_lgbm_impute_detailed.py --optuna
 
 # Fatias de período completo (data/series_list/)
 python src/periods.py --min-length 108
@@ -62,12 +62,12 @@ Treinos LiDAR (protocolo de reamostragem 80/20 e variantes) — runbook
 completo na skill **lidar-retrain**:
 
 ```bash
-python scripts/lidar_7525_train.py --train-ratio 0.80   # 80/20 -> trained_8020
-python scripts/lidar_7525_train.py --train-ratio 0.75   # 75/25 -> trained_7525
-python scripts/lidar_8020_mseloss_train.py              # ablação de loss
-python scripts/lidar_8020_startweight_train.py          # loss invertida
+python scripts/experiments/lidar_7525_train.py --train-ratio 0.80   # 80/20 -> trained_8020
+python scripts/experiments/lidar_7525_train.py --train-ratio 0.75   # 75/25 -> trained_7525
+python scripts/experiments/lidar_8020_mseloss_train.py              # ablação de loss
+python scripts/experiments/lidar_8020_startweight_train.py          # loss invertida
 # Regenerar relatório de resultados (figuras + evaluation.json, ~5 min GPU):
-python tests/relatorio_resultados.py --models-dir pipeline/tmp/trained_8020 \
+python reports/src/relatorio_resultados.py --models-dir pipeline/tmp/trained_8020 \
     --out-dir data/results/report_8020 --no-baselines
 ```
 
@@ -75,5 +75,7 @@ python tests/relatorio_resultados.py --models-dir pipeline/tmp/trained_8020 \
 
 Não há linter/formatter/type-checker/test runner configurados nem CI.
 Para lint durante o desenvolvimento, `pyflakes` e `radon` são úteis (não
-estão no requirements.txt). Os arquivos em `tests/` NÃO são pytest/unittest —
-são scripts standalone executados com `python` direto.
+estão no requirements.txt). `tests/` NÃO é pytest/unittest — só smoke
+tests `test_*.py` com `python` direto; estudos/ablações vivem em
+`studies/` (idem), treinadores de rodadas concluídas em
+`scripts/experiments/` e automação distribuída em `scripts/dist/`.

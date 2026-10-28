@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
 # Watchdog do walk-forward LightGBM-imputado (GPU local).
 #
-# Roda scripts/wfo_lightgbm_run.py para os wrappers locais e reinicia sempre
+# Roda scripts/experiments/wfo_lightgbm_run.py para os wrappers locais e reinicia sempre
 # que a RAM usada exceder MAX_USED_GB (padrao 44, requisito do experimento)
 # ou o processo sair com erro. Cada janela concluida fica em disco
 # (predictions_window_*.csv + window_metrics_*.json), entao cada reinicio
 # retoma exatamente de onde parou.
 #
 # Usage:
-#   bash scripts/wfo_lightgbm_watchdog.sh [wrapper ...]   # default: lstm lstm_bi
+#   bash scripts/experiments/wfo_lightgbm_watchdog.sh [wrapper ...]   # default: lstm lstm_bi
 #
 # Variaveis: MAX_USED_GB (44), POLL_SECS (5), LOG, EPOCHS, WRAPPERS.
 
@@ -79,7 +79,7 @@ used_ram_gb() {
                END { printf "%.1f", (total - avail) / 1024 / 1024 }'
 }
 
-CMD="python scripts/wfo_lightgbm_run.py --wrappers ${WRAPPERS[*]}"
+CMD="python scripts/experiments/wfo_lightgbm_run.py --wrappers ${WRAPPERS[*]}"
 if [ -n "$EPOCHS_ARG" ]; then
     CMD="$CMD --epochs $EPOCHS_ARG"
 fi
@@ -104,9 +104,9 @@ while :; do
             kill -KILL "$pid" 2>/dev/null
             # o pipeline ($CMD | tee) pode deixar o python orfao; garante que
             # nenhum runner fique rodando em paralelo ao reinicio
-            pkill -TERM -f "scripts/wfo_lightgbm_run.py" 2>/dev/null
+            pkill -TERM -f "scripts/experiments/wfo_lightgbm_run.py" 2>/dev/null
             sleep 2
-            pkill -KILL -f "scripts/wfo_lightgbm_run.py" 2>/dev/null
+            pkill -KILL -f "scripts/experiments/wfo_lightgbm_run.py" 2>/dev/null
             wait "$pid" 2>/dev/null
             killed=1
             break

@@ -22,7 +22,7 @@ persistência):
 
 Executar a partir da raiz do projeto (GPU recomendada):
     source .venv/bin/activate && source scripts/tf_gpu_env.sh
-    python tests/metodos_complementares.py \
+    python studies/metodos_complementares.py \
         --models-dir pipeline/tmp/trained_8020 \
         --loss-ab-dir pipeline/tmp/trained_8020_mseloss \
         --out-dir data/results/metodos_complementares
@@ -40,8 +40,9 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
-if str(Path(__file__).resolve().parent) not in sys.path:
-    sys.path.insert(0, str(Path(__file__).resolve().parent))
+for path in (PROJECT_ROOT, PROJECT_ROOT / "reports" / "src"):
+    if str(path) not in sys.path:
+        sys.path.insert(0, str(path))
 
 import numpy as np
 import pandas as pd
@@ -774,7 +775,7 @@ reportado com honestidade.</li>
 relatório canônico usa apenas <b>163 origens</b> — as origens dos baselines
 têm drift de microssegundos e não casam com a grade do dataset. Correção
 (<code>origin.dt.round("min")</code>) aplicada aqui; falta aplicar em
-<code>tests/relatorio_resultados.py</code>.</div>
+<code>reports/src/relatorio_resultados.py</code>.</div>
 </section>""")
 
     # A1 DM
@@ -918,7 +919,7 @@ aodi2026optimized (BFAST)</div>
 </section>""")
 
     html.append("""</main><footer>Gerado por
-<code>tests/metodos_complementares.py</code> · explicações completas e fontes:
+<code>studies/metodos_complementares.py</code> · explicações completas e fontes:
 <code>docs/revisions/sbr/guia_metricas.ai.md</code> · dados brutos:
 <code>metodos.json</code>, CSVs em <code>data/results/metodos_complementares/</code>
 · DOIs verificados em 14/10/2026.</footer></body></html>""")
