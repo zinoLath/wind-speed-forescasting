@@ -1,11 +1,12 @@
-"""Diagrama de Diferença Crítica POR HORIZONTE — Friedman + Nemenyi (h160).
+"""Diagrama de Diferença Crítica POR HORIZONTE (Wilcoxon-Holm) — h160.
 
 Mesmo plot do `reports/lidar/reval_sbsr/cd_horizonte.py` apontado para a
 rodada do paper (perfil 40–160 m, reval 72,5/12,5/15): blocos = origens,
-perda = MSE no par (origem, h). Os ranks são os de Friedman (rank dos
-métodos dentro de cada origem, médio entre origens) e os cliques ligados
-por barras usam a CD de Nemenyi CALCULADA POR HORIZONTE: pares com
-diferença de ranks < CD(h) são estatisticamente indistinguíveis.
+perda = RMSE no par (origem, h). Os pontos no eixo são os ranks médios
+de Friedman (rank dos métodos dentro de cada origem, médio entre
+origens) e os cliques ligados por barras reúnem pares NÃO-SEPARÁVEIS no
+Wilcoxon signed-rank pareado por origem com Holm dentro do horizonte
+(p_holm >= alpha).
 
 Fontes: DL do banco (`data/predictions.db`, run 12 = lidar/reval-h160,
 grade já trimada em 72 origens) + baselines de
@@ -35,8 +36,9 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
 import numpy as np  # noqa: E402
 import pandas as pd  # noqa: E402
+from scipy.stats import wilcoxon  # noqa: E402
 
-FIG_DIR = Path(__file__).resolve().parent / "figures_static"
+FIG_DIR = (PROJECT_ROOT / "reports/lidar/reval-h160" / "figures_static")
 OUT_JSON = (PROJECT_ROOT / "data" / "results" / "report_reval_h160"
             / "cd_horizonte.json")
 BASELINE_CSV = (PROJECT_ROOT / "data" / "results" / "baselines"
@@ -45,16 +47,14 @@ RUN_ID = 12  # lidar/reval-h160
 TRIM = 72
 HORIZONS = list(range(1, 37))
 ALPHA = 0.05
-# q de Studentized range / sqrt(2) para alpha=0.05 (tabela Nemenyi)
-NEMENYI_Q = {2: 1.960, 3: 2.343, 4: 2.569, 5: 2.728, 6: 2.850, 7: 2.949}
 
 NAMES = ["Seq2Seq_LSTM", "Seq2Seq_TCN_Bidirectional", "Seq2Seq_TCN",
          "Seq2Seq_LSTM_Bidirectional", "arima", "persistence"]
 LABELS = {"Seq2Seq_LSTM": "LSTM", "Seq2Seq_TCN_Bidirectional": "TCN-Bi",
           "Seq2Seq_TCN": "TCN", "Seq2Seq_LSTM_Bidirectional": "LSTM-Bi",
           "arima": "ARIMA", "persistence": "Persistência"}
-SHORT = {"LSTM": "LSTM", "LSTM-Bi": "L-Bi", "TCN": "TCN", "TCN-Bi": "T-Bi",
-         "ARIMA": "ARI", "Persistência": "P"}
+SHORT = {"LSTM": "LSTM", "LSTM-Bi": "BiLSTM", "TCN": "TCN", "TCN-Bi": "BiTCN",
+         "ARIMA": "ARIMA", "Persistência": "Pers."}
 COLORS = {"LSTM": "#1f77b4", "LSTM-Bi": "#9467bd", "TCN": "#2ca02c",
           "TCN-Bi": "#d62728", "ARIMA": "#7f7f7f",
           "Persistência": "#000000"}
@@ -123,18 +123,28 @@ def main():
         wide = (common[common["horizon"] == h]
                 .pivot_table(index="origin", columns="name", values="loss")
                 .dropna())
+        wide = np.sqrt(wide)  # perda quadrática -> RMSE (m/s) por (origem, h)
         ranks = wide[NAMES].rank(axis=1)
         mean_r = {LABELS[n]: float(ranks[n].mean()) for n in NAMES}
-        # post-hoc de Nemenyi POR HORIZONTE: pares com diferença de
-        # ranks médios < CD(h) são indistinguíveis (barras dos cliques)
-        k = len(NAMES)
-        n_h = int(len(wide))
-        cd_h = NEMENYI_Q[k] * np.sqrt(k * (k + 1) / (6.0 * n_h))
-        edges = [(a, b) for a, b in itertools.combinations(sorted(mean_r), 2)
-                 if abs(mean_r[a] - mean_r[b]) < cd_h]
+        # post-hoc: Wilcoxon signed-rank pareado por origem + Holm dentro
+        # do horizonte; p_holm >= alpha => par indistinguível (aresta)
+        pairs, pvals = [], []
+        for a, b in itertools.combinations(NAMES, 2):
+            diff = wide[a] - wide[b]
+            p = 1.0 if (diff == 0).all() else float(wilcoxon(diff).pvalue)
+            pairs.append((LABELS[a], LABELS[b]))
+            pvals.append(p)
+        order = np.argsort(pvals)
+        m = len(pvals)
+        holm = np.empty(m)
+        run = 0.0
+        for i, idx in enumerate(order):
+            run = max(run, min(1.0, (m - i) * pvals[idx]))
+            holm[idx] = run
+        edges = [(a, b) for (a, b), ph in zip(pairs, holm) if ph >= ALPHA]
         return {"wide": wide, "mean_r": mean_r,
                 "groups": maximal_cliques(list(mean_r), edges),
-                "cd": float(cd_h), "n_origins": n_h}
+                "n_origins": int(len(wide))}
 
     def draw_panel(ax, h, info, scale=1.0, compact=False, tight=False):
         mean_r, groups = info["mean_r"], info["groups"]
@@ -211,16 +221,15 @@ def main():
     by_h = {h: compute(h) for h in HORIZONS}
     summaries = [{"horizon": h, "n_origins": by_h[h]["n_origins"],
                   "mean_ranks": by_h[h]["mean_r"],
-                  "grupos_nemenyi": [list(g) for g in by_h[h]["groups"]],
-                  "cd_nemenyi": by_h[h]["cd"]}
+                  "grupos_wilcoxon_holm": [list(g) for g in by_h[h]["groups"]]}
                  for h in HORIZONS]
 
     fig, axes = plt.subplots(6, 6, figsize=(13, 17))
     for ax, h in zip(axes.flat, HORIZONS):
         draw_panel(ax, h, by_h[h], scale=1.0)
 
-    fig.suptitle("Diferença crítica por horizonte — Friedman + Nemenyi "
-                 "(perfil 40–160 m, revalidação 72,5/12,5/15) "
+    fig.suptitle("Diferença crítica por horizonte — agrupamento "
+                 "Wilcoxon-Holm (perfil 40–160 m, revalidação 72,5/12,5/15) "
                  "(blocos = origens; barras ligam métodos não-separáveis)",
                  fontsize=11)
     fig.tight_layout(rect=(0, 0, 1, 0.985))
@@ -232,7 +241,7 @@ def main():
     fig, axes = plt.subplots(2, 3, figsize=(9, 7.6))
     for ax, h in zip(axes.flat, sel):
         draw_panel(ax, h, by_h[h], scale=2.0, compact=True, tight=True)
-    fig.suptitle("Diferença crítica por horizonte (Friedman + Nemenyi)",
+    fig.suptitle("Diferença crítica por horizonte (Wilcoxon-Holm)",
                  fontsize=16)
     fig.subplots_adjust(left=0.10, right=0.90, top=0.88, bottom=0.04,
                         wspace=0.95)
@@ -240,17 +249,19 @@ def main():
     plt.close(fig)
 
     OUT_JSON.write_text(json.dumps({
-        "protocolo": "CD por horizonte com post-hoc de Nemenyi: ranks de "
-                     "Friedman por origem; pares com diferença de ranks "
-                     "médios < CD(h) de Nemenyi formam cliques ligados por "
-                     "barras",
+        "protocolo": "CD por horizonte com agrupamento Wilcoxon-Holm: "
+                     "pares com p_holm >= 0.05 (Wilcoxon signed-rank por "
+                     "origem, Holm dentro do horizonte) formam cliques "
+                     "ligados por barras; perda = RMSE (m/s) no par "
+                     "(origem, h); pontos no eixo = ranks médios de "
+                     "Friedman",
         "run_id": RUN_ID, "trim_boundary_origins": TRIM, "alpha": ALPHA,
         "por_horizonte": summaries,
     }, indent=1), encoding="utf-8")
     print(f"-> {FIG_DIR / 'cd_horizonte.png'}")
     print(f"-> {OUT_JSON}")
     for s in (summaries[0], summaries[17], summaries[35]):
-        gs = [" < ".join(g) for g in s["grupos_nemenyi"]]
+        gs = [" < ".join(g) for g in s["grupos_wilcoxon_holm"]]
         print(f"h={s['horizon']:>2}: {' | '.join(gs) or 'sem grupos'}")
 
 

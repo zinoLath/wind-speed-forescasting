@@ -874,20 +874,20 @@ def plot_per_horizon(recs, extras, baselines=None):
 
 
 def plot_horizon_heatmap(recs, extras, baselines=None):
-    mses = []
+    rmses = []
     labels = [r["short"] for r in recs]
     for r in recs:
         ph = extras[r["name"]]["per_horizon"]
-        mses.append(ph["mse"].to_numpy())
+        rmses.append(np.sqrt(ph["mse"].to_numpy()))
     if baselines and "per_horizon" in baselines:
         bh = baselines["per_horizon"]
         for mae_col, rmse_col, label in (("arima_mae", "arima_rmse", "ARIMA"),
                                          ("rf_mae", "rf_rmse", "Random Forest"),
                                          ("persistence_mae", "persistence_rmse",
                                           "Persistência")):
-            mses.append((bh[rmse_col] ** 2).to_numpy())
+            rmses.append(bh[rmse_col].to_numpy())
             labels.append(f"{label} (baseline)")
-    mat = np.vstack(mses)
+    mat = np.vstack(rmses)
 
     # Fontes grandes: no artigo a figura entra a \linewidth de coluna
     # (≈0,41× a largura original), então o tamanho efetivo ≈ fontsize × 0,41.
@@ -901,8 +901,6 @@ def plot_horizon_heatmap(recs, extras, baselines=None):
     _ticks = [5, 11, 17, 23, 29, 35]
     ax.set_xticks(_ticks, [str(6 * (k + 1)) for k in range(6)])
     ax.set_xlabel("Horizonte (passos de 10 min)", fontsize=15)
-    ax.set_title("MSE ((m/s)²) por modelo e horizonte (verde = menor erro)",
-                 fontsize=16)
     for j in _ticks:
         for i in range(len(labels)):
             v = mat[i, j]
@@ -910,9 +908,9 @@ def plot_horizon_heatmap(recs, extras, baselines=None):
                     fontsize=13, color="black",
                     bbox=dict(boxstyle="round,pad=0.12", fc="white", alpha=0.75, lw=0))
     cbar = fig.colorbar(im, ax=ax, pad=0.01)
-    cbar.set_label("MSE ((m/s)²)", fontsize=15)
+    cbar.set_label("RMSE (m/s)", fontsize=15)
     cbar.ax.tick_params(labelsize=13)
-    savefig(fig, "06_heatmap_mse_horizonte.png")
+    savefig(fig, "06_heatmap_rmse_horizonte.png")
 
 
 def plot_horizon_r2_heatmap(recs, extras, baselines=None):
@@ -2789,8 +2787,8 @@ def build_html(recs, dataset_info, hz_stats, arch_records, extras, dataset,
         + build_metric_tables(recs, extras, baselines),
         images=[("05_mae_por_horizonte_real.png", "MAE por horizonte — vs dado real, com baselines"),
                 ("05_mae_por_horizonte_wavelet.png", "MAE por horizonte — vs alvo wavelet, com baselines"),
-                ("06_heatmap_mse_horizonte.png",
-                 "Heatmap de MSE ((m/s)²) por modelo e horizonte — verde = menor erro"),
+                ("06_heatmap_rmse_horizonte.png",
+                 "Heatmap de RMSE (m/s) por modelo e horizonte — verde = menor erro"),
                 ("06_heatmap_r2_horizonte.png",
                  "Heatmap de R² por modelo e horizonte — verde = melhor ajuste"),
                 ("07_fan_chart.png",

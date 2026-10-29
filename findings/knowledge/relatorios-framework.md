@@ -1,7 +1,7 @@
 ---
 title: Framework de relatórios (reports/)
 area: relatorios
-updated: 2026-10-19
+updated: 2026-10-28
 ---
 
 # Framework de relatórios (reports/)
@@ -43,6 +43,25 @@ arquitetura:
   `report_module(...)` de `reports/src/resultados.py` (relatórios LiDAR) e
   `builder.run_standalone(__file__)` no `__main__` (reconstrói o site
   inteiro).
+- **Figuras de erro em RMSE + CD Wilcoxon-Holm (desde 28/10/2026)**: o
+  heatmap por modelo × horizonte dos relatórios de resultados saiu de MSE
+  para **RMSE (m/s)** (arquivo `06_heatmap_rmse_horizonte.png`, antigo
+  `06_heatmap_mse_…` removido) e o diagrama de diferença crítica da
+  rodada do paper (`reports/lidar/reval-h160/friedman_horizonte.py` +
+  `ab-alturas/cd_horizonte.py` para h160) usa **agrupamento
+  Wilcoxon-Holm** (Wilcoxon signed-rank pareado por origem, Holm entre os
+  pares; cliques ligados por barras) com perda RMSE — não mais Nemenyi/CD.
+  RMSE é monotônico por bloco: ranks/χ² idênticos ao critério MSE.
+  Números da rodada h160 (72 origens): Friedman agregado 6 métodos
+  χ² = 255,5, p = 3,6e-53; global 7 métodos (com RF, perdas MSE,
+  `testes_hipotese.json`) χ² = 251,2, p = 2,2e-51; Friedman por horizonte
+  35/36 significativos após Holm. Wilcoxon-Holm separa 14/15 pares — só
+  {TCN, ARIMA} não se separa (Nemenyi separava menos). DM/MCS/Wilcoxon em
+  `testes_hipotese.json` seguem em MSE por origem. Rodadas antigas
+  (reval_sbsr, 8020-sbsr) não foram regeneradas — ainda exibem MSE/Nemenyi
+  até a próxima regeneração.
+- Servidor aceita `--host` (ex.: `0.0.0.0` para acesso pelo celular na
+  LAN; sem firewall ativo na máquina, porta 8765).
 
 ## Fontes
 
