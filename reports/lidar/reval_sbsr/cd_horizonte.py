@@ -46,8 +46,8 @@ NAMES = ["Seq2Seq_LSTM", "Seq2Seq_TCN_Bidirectional", "Seq2Seq_TCN",
 LABELS = {"Seq2Seq_LSTM": "LSTM", "Seq2Seq_TCN_Bidirectional": "TCN-Bi",
           "Seq2Seq_TCN": "TCN", "Seq2Seq_LSTM_Bidirectional": "LSTM-Bi",
           "arima": "ARIMA", "persistence": "Persistência"}
-SHORT = {"LSTM": "LSTM", "LSTM-Bi": "L-Bi", "TCN": "TCN", "TCN-Bi": "T-Bi",
-         "ARIMA": "ARI", "Persistência": "P"}
+SHORT = {"LSTM": "LSTM", "LSTM-Bi": "BiLSTM", "TCN": "TCN", "TCN-Bi": "BiTCN",
+         "ARIMA": "ARIMA", "Persistência": "Pers."}
 COLORS = {"LSTM": "#1f77b4", "LSTM-Bi": "#9467bd", "TCN": "#2ca02c",
           "TCN-Bi": "#d62728", "ARIMA": "#7f7f7f",
           "Persistência": "#000000"}

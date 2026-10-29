@@ -209,8 +209,8 @@ def _friedman_h_section():
         if not r:
             continue
         rank_keys = {m: r[f"rank_{m}"] for m in
-                     ("LSTM", "LSTM-Bi", "TCN", "TCN-Bi", "ARIMA",
-                      "Persistência")}
+                     ("LSTM", "BiLSTM", "TCN", "BiTCN", "ARIMA",
+                      "Pers.")}
         best = min(rank_keys, key=rank_keys.get)
         table_rows.append((
             str(h), _num(r["chi2"], 1), _p(r["p_holm"]), best,

@@ -132,7 +132,7 @@ mets = [t for t in p.tables if t and t[0][:2] == ['Método', 'R²']]
    `fig_dataset_division.png`) apontando para
    `data/results/<REPORT>/images/…` (mesmos nomes de arquivo).
 2. Copiar localmente (SEM commit):
-   `cp data/results/<REPORT>/images/06_heatmap_mse_horizonte.png
+   `cp data/results/<REPORT>/images/06_heatmap_rmse_horizonte.png
    articles/sbr/LaTeX_Template_SBSR_Portugues/figuras/fig_mse_heatmap.png`
    (idem `06_heatmap_r2_horizonte.png` → `fig_r2_heatmap.png`,
    `01_split_temporal.png` → `fig_dataset_division.png`).

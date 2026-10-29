@@ -148,12 +148,12 @@ def main():
 
     names = ["Seq2Seq_LSTM", "Seq2Seq_TCN_Bidirectional", "Seq2Seq_TCN",
              "Seq2Seq_LSTM_Bidirectional", "arima", "persistence"]
-    labels = {"Seq2Seq_LSTM": "LSTM", "Seq2Seq_TCN_Bidirectional": "TCN-Bi",
-              "Seq2Seq_TCN": "TCN", "Seq2Seq_LSTM_Bidirectional": "LSTM-Bi",
-              "arima": "ARIMA", "persistence": "Persistência"}
-    colors = {"LSTM": "#1f77b4", "LSTM-Bi": "#9467bd", "TCN": "#2ca02c",
-              "TCN-Bi": "#d62728", "ARIMA": "#7f7f7f",
-              "Persistência": "#000000"}
+    labels = {"Seq2Seq_LSTM": "LSTM", "Seq2Seq_TCN_Bidirectional": "BiTCN",
+              "Seq2Seq_TCN": "TCN", "Seq2Seq_LSTM_Bidirectional": "BiLSTM",
+              "arima": "ARIMA", "persistence": "Pers."}
+    colors = {"LSTM": "#1f77b4", "BiLSTM": "#9467bd", "TCN": "#2ca02c",
+              "BiTCN": "#d62728", "ARIMA": "#7f7f7f",
+              "Pers.": "#000000"}
 
     per_h = []
     for h in HORIZONS:
@@ -195,7 +195,7 @@ def main():
     for n in names:
         lab = labels[n]
         ax1.plot(df["horizon"], df[f"mse_{lab}"], lw=1.7,
-                 color=colors[lab], ls="--" if lab == "Persistência" else "-",
+                 color=colors[lab], ls="--" if lab == "Pers." else "-",
                  label=lab)
     ax1.set_ylabel("MSE médio no horizonte")
     ax1.set_yscale("log")

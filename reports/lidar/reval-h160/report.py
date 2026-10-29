@@ -163,8 +163,8 @@ def _friedman_h_section():
         if not r:
             continue
         rank_keys = {m: r[f"rank_{m}"] for m in
-                     ("LSTM", "LSTM-Bi", "TCN", "TCN-Bi", "ARIMA",
-                      "Persistência")}
+                     ("LSTM", "BiLSTM", "TCN", "BiTCN", "ARIMA",
+                      "Pers.")}
         best = min(rank_keys, key=rank_keys.get)
         table_rows.append((
             str(h), _num(r["chi2"], 1), _p(r["p_holm"]), best,
@@ -173,15 +173,15 @@ def _friedman_h_section():
     nsig = sum(1 for r in rows if r["p_holm"] < 0.05)
     body = C.figure(
         "figures_static/friedman_horizonte.png",
-        "Painel superior: MSE médio por horizonte (escala log). Painel "
-        "inferior: rank médio de Friedman por horizonte (1 = melhor).",
+        "Painel superior: RMSE médio (m/s) por horizonte (escala log). "
+        "Painel inferior: rank médio de Friedman por horizonte (1 = melhor).",
         label="fig:friedman_horizonte")
     body += C.table(
         ["Horizonte", "χ²", "p (Holm)", "Melhor rank", "Rank LSTM",
          "H₀ rejeitada"],
         table_rows,
         f"Friedman pareado por horizonte ({data.get('n_origens')} origens "
-        f"na grade comum; blocos = origens; perda = MSE no par "
+        f"na grade comum; blocos = origens; perda = RMSE (m/s) no par "
         f"(origem, h)): H₀ rejeitada em {nsig}/36 horizontes (Holm 5%). "
         f"Inclui ARIMA e persistência (baselines na mesma grade, trim 72); "
         f"RF fora (sem predições por origem no diagrama).",
@@ -201,35 +201,40 @@ def _friedman_h_section():
 
 def _cd_section():
     data = _load("friedman_horizonte.json")
-    cd = (data or {}).get("nemenyi")
+    cd = (data or {}).get("wilcoxon_holm")
     if not cd:
         return ""
-    grupos = [" < ".join(g) for g in cd.get("grupos_nao_separaveis", [])]
+    grupos = [" < ".join(g) for g in cd.get("grupos_wilcoxon_holm", [])]
     ranks = cd.get("mean_ranks", {})
     rank_rows = [(m, _num(v, 3)) for m, v in
                  sorted(ranks.items(), key=lambda kv: kv[1])]
     body = C.figure(
         "figures_static/critical_difference.png",
-        "Diagrama de diferença crítica (Nemenyi, α = 0,05): modelos à "
-        "esquerda têm melhor rank médio; barras ligam grupos cuja "
-        "diferença de ranks é menor que a CD — estatisticamente "
-        "indistinguíveis.",
-        label="fig:cd_nemenyi")
+        "Diagrama de diferença crítica com agrupamento Wilcoxon-Holm "
+        "(α = 0,05): modelos à esquerda têm melhor rank médio de Friedman; "
+        "barras ligam grupos de métodos cujas diferenças par a par não "
+        "são significativas no Wilcoxon signed-rank pareado por origem "
+        "com correção de Holm — estatisticamente indistinguíveis.",
+        label="fig:cd_wilcoxon_holm")
     body += C.table(
         ["Método", "Rank médio"], rank_rows,
-        f"Ranks médios por origem (perda = MSE médio nos 36 passos; "
-        f"{cd.get('n_origens')} origens; CD de Nemenyi = "
-        f"{_num(cd['cd'], 3)} para k = {cd.get('k')} métodos).",
+        f"Ranks médios por origem (perda = RMSE (m/s) nos 36 passos; "
+        f"{cd.get('n_origens')} origens; k = {cd.get('k')} métodos; "
+        f"Friedman agregado: χ² = {_num(cd['friedman']['chi2'], 1)}, "
+        f"p = {_p(cd['friedman']['p'])}; agrupamento Wilcoxon-Holm, "
+        f"α = 0,05).",
         formats=("sbsr", "steam", "generic"), label="tab:cd_ranks",
-        note="Grupos não-separáveis: " + "; ".join(grupos) + ". No topo, "
-             "{TCN-Bi, LSTM} separam-se do cluster de baselines "
-             "({ARIMA, Persistência}); a LSTM-Bi fecha a fileira.",
+        note="Grupos não-separáveis (Wilcoxon-Holm): " + "; ".join(grupos)
+             + f". Dos {len(rank_rows) * (len(rank_rows) - 1) // 2} pares, "
+             f"apenas {len(grupos)} não rejeita H₀ após Holm — os ranks "
+             "médios dos demais pares são estatisticamente distintos "
+             "(Wilcoxon pareado por origem).",
     )
     return C.section(
-        "Diagrama de diferença crítica (Nemenyi)", body,
+        "Diagrama de diferença crítica (Wilcoxon-Holm)", body,
         sub="Mesma grade do Friedman global; gerado junto com a análise "
             "por horizonte (<code>friedman_horizonte.py</code>).",
-        sec_id="cd-nemenyi")
+        sec_id="cd-wilcoxon-holm")
 
 
 def _cd_horizonte_section():
@@ -243,10 +248,11 @@ def _cd_horizonte_section():
     body = C.figure(
         "figures_static/cd_horizonte_selecionados.png",
         "Diagrama de Diferença Crítica nos horizontes de 1 h a 6 h "
-        "(h = 6, 12, 18, 24, 30, 36) com post-hoc de Nemenyi: pontos no "
-        "eixo de ranks médios de Friedman (1 = melhor, à esquerda), "
-        "barras ligam métodos cuja diferença de ranks médios é menor "
-        "que a CD de Nemenyi do horizonte — estatisticamente "
+        "(h = 6, 12, 18, 24, 30, 36) com agrupamento Wilcoxon-Holm: "
+        "pontos no eixo de ranks médios de Friedman (1 = melhor, à "
+        "esquerda), barras ligam métodos cujas diferenças par a par não "
+        "são significativas no Wilcoxon signed-rank pareado por origem "
+        "com Holm dentro do horizonte — estatisticamente "
         "indistinguíveis (α = 0,05).",
         label="fig:cd_horizonte_selecionados")
     body += C.figure(
@@ -255,11 +261,11 @@ def _cd_horizonte_section():
         "(h = 1..36).",
         label="fig:cd_horizonte")
     return C.section(
-        "Diferença crítica por horizonte (Friedman + Nemenyi)", body,
+        "Diferença crítica por horizonte (Wilcoxon-Holm)", body,
         sub=f"A LSTM tem o melhor rank em {lstm_best}/36 horizontes; em "
             f"h = 1 nenhum par sobrevive ao Holm (todos os métodos se "
             f"separam); nos horizontes finais o cluster de topo é "
-            f"{{LSTM, TCN-Bi, TCN}} e a Persistência afunda. Gerado por "
+            f"{{LSTM, BiTCN, TCN}} e a Persistência afunda. Gerado por "
             f"<code>reports/lidar/ab-alturas/cd_horizonte.py</code> "
             f"(run 12 do banco + baselines <code>arima_rf_reval160</code>, "
             f"trim 72).",
@@ -321,8 +327,8 @@ def _std_erro_figure():
         "Desvio padrão do erro (previsto − real, m/s) por modelo e "
         "horizonte, entre origens da grade rolling oficial (trim 72): "
         "verde = erros consistentes entre origens; vermelho = dispersão "
-        "alta. Complemento do heatmap de MSE, que mistura viés² e "
-        "variância — o MSE pode crescer por viés ou por dispersão, e "
+        "alta. Complemento do heatmap de RMSE, que mistura viés e "
+        "variância — o RMSE pode crescer por viés ou por dispersão, e "
         "este mapa separa os dois efeitos. Gerado por "
         "<code>std_erro_horizonte.py</code> (run 12 + baselines "
         "<code>arima_rf_reval160</code>).",

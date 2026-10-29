@@ -1,9 +1,14 @@
-"""Friedman POR HORIZONTE + Nemenyi — rodada h160 (reval).
+"""Friedman POR HORIZONTE + CD (Wilcoxon-Holm) — rodada h160 (reval).
 
 Mesmo analysis do `reports/lidar/reval_sbsr/friedman_horizonte.py`
 apontado para a rodada do paper (perfil 40–160 m): Friedman por horizonte
-(blocos = origens, perda = MSE no par origem×h) com Holm entre os 36
-testes + diagrama de diferença crítica de Nemenyi agregado.
+(blocos = origens, perda = RMSE no par origem×h, em m/s) com Holm entre
+os 36 testes + diagrama de diferença crítica agregado com agrupamento
+Wilcoxon-Holm (pares não-separáveis por Wilcoxon signed-rank pareado por
+origem com Holm entre os pares formam cliques ligados por barras).
+O RMSE é raiz quadrada da perda quadrática — monotônica por bloco, os
+ranks coincidem com os do critério MSE, mas os valores ficam em m/s,
+comparáveis às tabelas do artigo.
 
 Fontes: DL do banco (run 12 = lidar/reval-h160, grade já trimada) +
 baselines de data/results/baselines/arima_rf_reval160/predictions_long.csv
@@ -15,6 +20,7 @@ data/results/report_reval_h160/friedman_horizonte.json
     python reports/lidar/reval-h160/friedman_horizonte.py
 """
 
+import itertools
 import json
 import sqlite3
 import sys
@@ -30,7 +36,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
 import numpy as np  # noqa: E402
 import pandas as pd  # noqa: E402
-from scipy.stats import friedmanchisquare  # noqa: E402
+from scipy.stats import friedmanchisquare, wilcoxon  # noqa: E402
 
 FIG_DIR = Path(__file__).resolve().parent / "figures_static"
 OUT_JSON = (PROJECT_ROOT / "data" / "results" / "report_reval_h160"
@@ -40,6 +46,7 @@ BASELINE_CSV = (PROJECT_ROOT / "data" / "results" / "baselines"
 RUN_ID = 12
 TRIM = 72
 HORIZONS = range(1, 37)
+ALPHA = 0.05
 
 plt.rcParams.update({
     "figure.dpi": 130, "axes.titlesize": 11, "axes.labelsize": 9.5,
@@ -60,37 +67,55 @@ def load_models(con):
     return rows
 
 
-# q de Studentized range / sqrt(2) para alpha=0.05 (tabela Nemenyi)
-NEMENYI_Q = {2: 1.960, 3: 2.343, 4: 2.569, 5: 2.728, 6: 2.850, 7: 2.949,
-             8: 3.031, 9: 3.102, 10: 3.164}
+def maximal_cliques(nodes, edges):
+    """Cliques maximais (grafo pequeno: força bruta sobre subconjuntos)."""
+    edges = set(edges)
+    cliques = []
+    for size in range(len(nodes), 1, -1):
+        for sub in itertools.combinations(nodes, size):
+            pairs = set(itertools.combinations(sub, 2))
+            if pairs <= edges and not any(set(c) > set(sub) for c in cliques):
+                cliques.append(sub)
+    return cliques
 
 
 def critical_difference(common, names, labels, colors):
-    """CD de Nemenyi sobre blocos = origens (perda = MSE médio nos 36 passos)."""
+    """Diferença crítica com agrupamento Wilcoxon-Holm (blocos = origens,
+    perda = RMSE nos 36 passos)."""
     wide = common.pivot_table(index="origin", columns="name", values="loss")
-    wide = wide.dropna()
+    wide = np.sqrt(wide.dropna())  # MSE médio por origem -> RMSE (m/s)
     k = len(names)
     n = len(wide)
     ranks = wide[names].rank(axis=1).mean()
-    cd = NEMENYI_Q[k] * np.sqrt(k * (k + 1) / (6.0 * n))
+    fr = friedmanchisquare(*[wide[n].to_numpy() for n in names])
     order = ranks.sort_values()
     order.index = [labels[x] for x in order.index]
-    groups = []
-    current = [order.index[0]]
-    for i in range(1, k):
-        if order.iloc[i] - order[current[0]] <= cd:
-            current.append(order.index[i])
-        else:
-            groups.append(current)
-            current = [order.index[i]]
-    groups.append(current)
+
+    # post-hoc: Wilcoxon signed-rank pareado por origem + Holm entre os
+    # k(k-1)/2 pares; p_holm >= alpha => par estatisticamente
+    # indistinguível => aresta no grafo de não-separabilidade
+    pairs = []
+    for a, b in itertools.combinations(names, 2):
+        diff = wide[a] - wide[b]
+        p = 1.0 if (diff == 0).all() else float(wilcoxon(diff).pvalue)
+        pairs.append((a, b, p))
+    holm_idx = np.argsort([p for _, _, p in pairs])
+    m = len(pairs)
+    holm = np.empty(m)
+    running = 0.0
+    for i, idx in enumerate(holm_idx):
+        running = max(running, min(1.0, (m - i) * pairs[idx][2]))
+        holm[idx] = running
+    edges = [(labels[a], labels[b]) for (a, b, _), ph in zip(pairs, holm)
+             if ph >= ALPHA]
+    groups = maximal_cliques(list(order.index), edges)
 
     fig, ax = plt.subplots(figsize=(8.5, 3.2))
     lo, hi = order.iloc[0], order.iloc[-1]
     pad = 0.4
-    ax.set_xlim(min(lo - pad, lo - cd), max(hi + pad, hi + cd))
+    ax.set_xlim(lo - pad, hi + pad)
     ax.set_ylim(0, 1)
-    ax.axvspan(min(lo - pad, lo - cd), max(hi + pad, hi + cd), color="white")
+    ax.axvspan(lo - pad, hi + pad, color="white")
     y = 0.78
     for name in order.index:
         ax.plot(order[name], y, "o", ms=7, color=colors[name],
@@ -104,20 +129,22 @@ def critical_difference(common, names, labels, colors):
         ax.plot([min(xs), max(xs)], [level, level], lw=2.2, color="#222222",
                 solid_capstyle="butt", zorder=2)
         level -= 0.13
-    ax.plot([lo - cd, lo - cd], [0.15, 0.9], ls="--", lw=1.2, color="#888888")
-    ax.annotate(f"CD = {cd:.2f}", (lo - cd, 0.08), ha="center", fontsize=8.5,
-                color="#555555")
     ax.axis("off")
-    ax.set_title("Diferença crítica de Nemenyi (α = 0,05; blocos = "
-                 f"{n} origens; perda = MSE médio nos 36 passos)",
+    ax.set_title("Diferença crítica — agrupamento Wilcoxon-Holm "
+                 f"(α = {str(ALPHA).replace('.', ',')}; blocos = {n} "
+                 "origens; perda = RMSE nos 36 passos, m/s)",
                  fontsize=10)
     fig.tight_layout()
     FIG_DIR.mkdir(exist_ok=True)
     fig.savefig(FIG_DIR / "critical_difference.png", dpi=140)
     plt.close(fig)
-    return {"cd": float(cd), "k": k, "n_origens": int(n),
+    return {"alpha": ALPHA, "k": k, "n_origens": int(n),
+            "friedman": {"chi2": float(fr.statistic), "p": float(fr.pvalue)},
             "mean_ranks": {labels[n]: float(ranks[n]) for n in names},
-            "grupos_nao_separaveis": [list(g) for g in groups]}
+            "pares": [{"par": f"{labels[a]} vs {labels[b]}", "p": float(p),
+                       "p_holm": float(ph)}
+                      for (a, b, p), ph in zip(pairs, holm)],
+            "grupos_wilcoxon_holm": [list(g) for g in groups]}
 
 
 def main():
@@ -150,24 +177,24 @@ def main():
 
     names = ["Seq2Seq_LSTM", "Seq2Seq_TCN_Bidirectional", "Seq2Seq_TCN",
              "Seq2Seq_LSTM_Bidirectional", "arima", "persistence"]
-    labels = {"Seq2Seq_LSTM": "LSTM", "Seq2Seq_TCN_Bidirectional": "TCN-Bi",
-              "Seq2Seq_TCN": "TCN", "Seq2Seq_LSTM_Bidirectional": "LSTM-Bi",
-              "arima": "ARIMA", "persistence": "Persistência"}
-    colors = {"LSTM": "#1f77b4", "LSTM-Bi": "#9467bd", "TCN": "#2ca02c",
-              "TCN-Bi": "#d62728", "ARIMA": "#7f7f7f",
-              "Persistência": "#000000"}
+    labels = {"Seq2Seq_LSTM": "LSTM", "Seq2Seq_TCN_Bidirectional": "BiTCN",
+              "Seq2Seq_TCN": "TCN", "Seq2Seq_LSTM_Bidirectional": "BiLSTM",
+              "arima": "ARIMA", "persistence": "Pers."}
+    colors = {"LSTM": "#1f77b4", "BiLSTM": "#9467bd", "TCN": "#2ca02c",
+              "BiTCN": "#d62728", "ARIMA": "#7f7f7f",
+              "Pers.": "#000000"}
 
     per_h = []
     for h in HORIZONS:
         sub = common[common["horizon"] == h]
         wide = sub.pivot_table(index="origin", columns="name", values="loss")
-        wide = wide.dropna()
+        wide = np.sqrt(wide.dropna())  # RMSE (m/s) no par (origem, h)
         stat, p = friedmanchisquare(*[wide[n].to_numpy() for n in names])
         ranks = wide[names].rank(axis=1).mean()
         row = {"horizon": h, "chi2": float(stat), "p": float(p),
                "n_origins": int(len(wide)),
                **{f"rank_{labels[n]}": float(ranks[n]) for n in names},
-               **{f"mse_{labels[n]}": float(wide[n].mean()) for n in names}}
+               **{f"rmse_{labels[n]}": float(wide[n].mean()) for n in names}}
         per_h.append(row)
 
     # Holm across horizons (36 testes)
@@ -185,30 +212,30 @@ def main():
 
     OUT_JSON.write_text(json.dumps({
         "protocolo": "Friedman por horizonte; blocos = origens; perda = "
-                     "MSE no par (origem, h); grade comum (trim 72) da "
-                     "rodada reval 40–160 m",
+                     "RMSE (m/s) no par (origem, h); grade comum (trim 72) "
+                     "da rodada reval 40–160 m",
         "run_id": RUN_ID, "n_origens": n_origins,
         "modelos": [labels[n] for n in names],
         "por_horizonte": per_h,
-        "nemenyi": critical_difference(common, names, labels, colors),
+        "wilcoxon_holm": critical_difference(common, names, labels, colors),
     }, indent=1), encoding="utf-8")
 
     df = pd.DataFrame(per_h)
     fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(8.5, 7.2), sharex=True)
     for n in names:
         lab = labels[n]
-        ax1.plot(df["horizon"], df[f"mse_{lab}"], lw=1.7,
-                 color=colors[lab], ls="--" if lab == "Persistência" else "-",
+        ax1.plot(df["horizon"], df[f"rmse_{lab}"], lw=1.7,
+                 color=colors[lab], ls="--" if lab == "Pers." else "-",
                  label=lab)
-    ax1.set_ylabel("MSE médio no horizonte")
+    ax1.set_ylabel("RMSE médio no horizonte (m/s)")
     ax1.set_yscale("log")
-    ax1.set_title("Rodada 40–160 m (reval 72,5/12,5/15) — MSE por "
+    ax1.set_title("Rodada 40–160 m (reval 72,5/12,5/15) — RMSE por "
                   "horizonte e rank Friedman")
     ax1.legend(ncol=3, loc="upper left")
     for n in names:
         lab = labels[n]
         ax2.plot(df["horizon"], df[f"rank_{lab}"], lw=1.7,
-                 color=colors[lab], ls="--" if lab == "Persistência" else "-",
+                 color=colors[lab], ls="--" if lab == "Pers." else "-",
                  label=lab)
     ax2.axhline(1, color="#bbbbbb", lw=0.8)
     ax2.axhline(len(names), color="#bbbbbb", lw=0.8)
@@ -221,12 +248,15 @@ def main():
     plt.close(fig)
 
     sig = [r["horizon"] for r in per_h if r["p_holm"] < 0.05]
+    cd = json.loads(OUT_JSON.read_text())["wilcoxon_holm"]
     print(f"-> {FIG_DIR / 'friedman_horizonte.png'}")
     print(f"-> {FIG_DIR / 'critical_difference.png'}")
     print(f"-> {OUT_JSON}")
     print(f"Friedman por horizonte: {len(sig)}/36 significativos após Holm")
-    print("Nemenyi CD:", json.dumps(
-        json.loads(OUT_JSON.read_text())["nemenyi"]["grupos_nao_separaveis"]))
+    print("Friedman agregado (6 métodos, RMSE por origem): "
+          f"chi2 = {cd['friedman']['chi2']:.1f}, "
+          f"p = {cd['friedman']['p']:.2g}")
+    print("Grupos Wilcoxon-Holm:", json.dumps(cd["grupos_wilcoxon_holm"]))
 
 
 if __name__ == "__main__":
